@@ -1,0 +1,114 @@
+{
+  "project_info": {
+    "project_number": "20897788348",
+    "project_id": "quickbill-2a76b",
+    "storage_bucket": "quickbill-2a76b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:20897788348:android:3638803f4f6c5a89bc7bb9",
+        "android_client_info": {
+          "package_name": "com.example.quickbill"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "20897788348-bks3iptdbelb5ba3f58r8p4c1r2b55ik.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.quickbill",
+            "certificate_hash": "f9e909258c55e20d6201b4a997a53e6887ef2729"
+          }
+        },
+        {
+          "client_id": "20897788348-fndataie31tno78soloemebembmec44t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.quickbill",
+            "certificate_hash": "6eae29fa9633868cdad0965bb2d42d1182e9203a"
+          }
+        },
+        {
+          "client_id": "20897788348-jelvtmta07f6l88i8ihmb50henjq9ttn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCX8aP5N_2zgIFNS22EtU_WCNX04bUN3ws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "20897788348-jelvtmta07f6l88i8ihmb50henjq9ttn.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "20897788348-huiuumrv3ggvn9stst9a72l3i9tes6qp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.quickbill"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:20897788348:android:b64278775d5b4aa1bc7bb9",
+        "android_client_info": {
+          "package_name": "lk.unio.quickbillpos"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "20897788348-1rqlv0v9eialso392l2sdgqbjangffhn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "lk.unio.quickbillpos",
+            "certificate_hash": "f9e909258c55e20d6201b4a997a53e6887ef2729"
+          }
+        },
+        {
+          "client_id": "20897788348-aefckki5o3r114gk671gli3tksq774j0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "lk.unio.quickbillpos",
+            "certificate_hash": "6eae29fa9633868cdad0965bb2d42d1182e9203a"
+          }
+        },
+        {
+          "client_id": "20897788348-jelvtmta07f6l88i8ihmb50henjq9ttn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCX8aP5N_2zgIFNS22EtU_WCNX04bUN3ws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "20897788348-jelvtmta07f6l88i8ihmb50henjq9ttn.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "20897788348-huiuumrv3ggvn9stst9a72l3i9tes6qp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.quickbill"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

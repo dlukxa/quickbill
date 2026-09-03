@@ -1,0 +1,9 @@
+Building com.example.quickbill for simulator (ios)...
+Running pod install...                                             10.9s
+Running Xcode build...                                          
+Xcode build done.                                           368.1s
+Failed to build iOS app
+Lexical or Preprocessor Issue (Xcode): Include of non-modular header inside framework module 'firebase_core.FLTFirebasePlugin': '/Users/dlukxa/Development/projects/POS/quickbill/ios/Pods/Headers/Public/Firebase/Firebase.h'
+/Users/dlukxa/.pub-cache/hosted/pub.dev/firebase_core-2.32.0/ios/Classes/FLTFirebasePlugin.h:9:8
+
+Encountered error while building for simulator.
