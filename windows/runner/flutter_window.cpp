@@ -22,10 +22,15 @@ bool FlutterWindow::OnCreate() {
       frame.right - frame.left, frame.bottom - frame.top, project_);
   // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
+    ::MessageBox(nullptr,
+      L"Failed to initialize Flutter engine or view.\n\nPlease ensure the 'data' folder and required DLLs are present next to quickbill.exe.",
+      L"QuickBill Launch Error", MB_ICONERROR | MB_OK);
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  this->Show();
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();

@@ -25,8 +25,12 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    try {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    } catch (e, stack) {
+      debugPrint('⚠️ sqfliteFfiInit initialization notice: $e\n$stack');
+    }
   }
 
     // ZEN ERROR SHIELD - Replaces the 'Red Screen' globally with our premium design
