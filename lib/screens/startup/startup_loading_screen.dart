@@ -84,28 +84,37 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
         options: DefaultFirebaseOptions.currentPlatform,
       );
 
-      // Activate Firebase App Check.
-      // Uses the debug provider in debug builds (shows a debug token in the console
-      // the first time — add it to the Firebase Console under App Check).
-      // Uses Play Integrity on Android release builds for real protection.
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: kDebugMode
-            ? AndroidProvider.debug
-            : AndroidProvider.playIntegrity,
-        appleProvider: kDebugMode
-            ? AppleProvider.debug
-            : AppleProvider.appAttest,
-      );
+      // Activate Firebase App Check (mobile platforms only).
+      if (!kIsWeb && !Platform.isWindows && !Platform.isLinux) {
+        try {
+          await FirebaseAppCheck.instance.activate(
+            androidProvider: kDebugMode
+                ? AndroidProvider.debug
+                : AndroidProvider.playIntegrity,
+            appleProvider: kDebugMode
+                ? AppleProvider.debug
+                : AppleProvider.appAttest,
+          );
+        } catch (e) {
+          debugPrint('AppCheck desktop notice: $e');
+        }
+      }
       
       // Initialize Remote Config for dynamic cloud keys and flags
       await RemoteConfigService.instance.initialize();
       
-      // Initialize Crashlytics for crash and ANR tracking
-      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-      PlatformDispatcher.instance.onError = (error, stack) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-        return true;
-      };
+      // Initialize Crashlytics for crash and ANR tracking (mobile/macOS only)
+      if (!kIsWeb && !Platform.isWindows && !Platform.isLinux) {
+        try {
+          FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+          PlatformDispatcher.instance.onError = (error, stack) {
+            FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+            return true;
+          };
+        } catch (e) {
+          debugPrint('Crashlytics desktop notice: $e');
+        }
+      }
 
       if (!mounted) return;
       setState(() {
