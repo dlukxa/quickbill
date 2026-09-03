@@ -37,13 +37,33 @@ jobs:
           CL: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
         run: flutter build windows --release
 
+      - name: Download Visual C++ Redistributable
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc_redist.x64.exe"
+          Copy-Item "vc_redist.x64.exe" "build\windows\x64\runner\Release\"
+
+      - name: Build Windows Setup Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          if (!(Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y
+          }
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\quickbill_setup.iss
+
       - name: Archive Windows Release
         shell: pwsh
         run: |
           Get-ChildItem -Path "build\windows\x64\runner\Release"
           Compress-Archive -Path "build\windows\x64\runner\Release\*" -DestinationPath "quickbill_windows_x64.zip" -Force
 
-      - name: Upload Windows Build Artifact
+      - name: Upload Windows Setup Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickBill_Setup_x64
+          path: build\windows_installer\QuickBill_Setup.exe
+
+      - name: Upload Windows Portable Zip
         uses: actions/upload-artifact@v4
         with:
           name: quickbill-windows-x64
