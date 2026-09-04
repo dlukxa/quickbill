@@ -1,8 +1,10 @@
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqlite3/open.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
@@ -270,6 +272,20 @@ class DatabaseService {
 
   Future<Database> _initDatabase() async {
     if (Platform.isWindows || Platform.isLinux) {
+      if (Platform.isWindows) {
+        try {
+          open.overrideFor(OperatingSystem.windows, () {
+            final exeDir = File(Platform.resolvedExecutable).parent.path;
+            final localDll = File('$exeDir\\sqlite3.dll');
+            if (localDll.existsSync()) {
+              return DynamicLibrary.open(localDll.path);
+            }
+            return DynamicLibrary.open('sqlite3.dll');
+          });
+        } catch (e) {
+          debugPrint('DatabaseService: open.overrideFor notice: $e');
+        }
+      }
       databaseFactory = databaseFactoryFfi;
       try {
         sqfliteFfiInit();

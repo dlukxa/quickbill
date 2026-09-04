@@ -20,11 +20,27 @@ import 'screens/startup/language_selection_screen.dart';
 import 'utils/fallback_localizations.dart';
 import 'screens/desktop/desktop_wrapper.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqlite3/open.dart';
+import 'dart:ffi';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux) {
+    if (Platform.isWindows) {
+      try {
+        open.overrideFor(OperatingSystem.windows, () {
+          final exeDir = File(Platform.resolvedExecutable).parent.path;
+          final localDll = File('$exeDir\\sqlite3.dll');
+          if (localDll.existsSync()) {
+            return DynamicLibrary.open(localDll.path);
+          }
+          return DynamicLibrary.open('sqlite3.dll');
+        });
+      } catch (e) {
+        debugPrint('⚠️ open.overrideFor notice: $e');
+      }
+    }
     databaseFactory = databaseFactoryFfi;
     try {
       sqfliteFfiInit();

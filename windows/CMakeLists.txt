@@ -91,6 +91,12 @@ if(PLUGIN_BUNDLED_LIBRARIES)
     COMPONENT Runtime)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sqlite3.dll")
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/sqlite3.dll"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endif()
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/windows/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"
