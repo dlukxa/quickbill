@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
@@ -267,7 +269,15 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
+    if (Platform.isWindows || Platform.isLinux) {
+      databaseFactory = databaseFactoryFfi;
+      try {
+        sqfliteFfiInit();
+      } catch (e) {
+        debugPrint('DatabaseService: sqfliteFfiInit notice: $e');
+      }
+    }
+    final dbPath = await databaseFactory.getDatabasesPath();
     final path = join(dbPath, 'quickbill.db');
 
     return await openDatabase(

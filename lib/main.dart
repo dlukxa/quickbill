@@ -25,9 +25,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux) {
+    databaseFactory = databaseFactoryFfi;
     try {
       sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
     } catch (e, stack) {
       debugPrint('⚠️ sqfliteFfiInit initialization notice: $e\n$stack');
     }
