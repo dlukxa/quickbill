@@ -34,7 +34,8 @@ import '../../widgets/sinhala_transliteration_input.dart';
 class AddProductScreen extends ConsumerStatefulWidget {
   final Product? product;
   final String? initialBarcode;
-  const AddProductScreen({super.key, this.product, this.initialBarcode});
+  final String? initialName;
+  const AddProductScreen({super.key, this.product, this.initialBarcode, this.initialName});
 
   @override
   ConsumerState<AddProductScreen> createState() => _AddProductScreenState();
@@ -77,6 +78,12 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialName != null && widget.initialName!.isNotEmpty) {
+      _nameController.text = widget.initialName!;
+    }
+    if (widget.initialBarcode != null && widget.initialBarcode!.isNotEmpty) {
+      _barcodeController.text = widget.initialBarcode!;
+    }
     if (widget.product != null) {
       _nameController.text = widget.product!.name;
       _nameSinhalaController.text = widget.product!.nameSinhala ?? '';

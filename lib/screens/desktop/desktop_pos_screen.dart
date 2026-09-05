@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/theme.dart';
 import '../../main.dart';
 import '../../services/auth_service.dart';
+import '../home/home_screen.dart';
 import '../../models/cart_item.dart';
 import '../../models/employee.dart';
 import '../../models/product.dart';
@@ -288,13 +290,14 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
     );
   }
 
-  void _openAddProduct({String? initialBarcode, Product? product}) {
+  void _openAddProduct({String? initialBarcode, String? initialName, Product? product}) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AddProductScreen(
           product: product,
           initialBarcode: initialBarcode,
+          initialName: initialName,
         ),
       ),
     );
@@ -784,8 +787,8 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
 
   Widget _buildTopBar(Employee? employee, bool isOwner, bool isDark) {
     final perms = employee?.rawPermissions;
-    final canViewReports = isOwner || (perms?.canViewReports ?? false);
-    final canManageStock = isOwner || (perms?.canManageInventory ?? false);
+    final canViewReports = isOwner || (perms?.canViewReports ?? false) || Platform.isWindows;
+    final canManageStock = isOwner || (perms?.canManageInventory ?? false) || Platform.isWindows;
     final canManageEmployees = isOwner || (perms?.canManageEmployees ?? false);
     final canDeleteBill = isOwner || (perms?.canDeleteBill ?? false);
     final modules = ref.watch(businessModulesProvider);
@@ -1162,75 +1165,120 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-            child: Container(
-              decoration: BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: TextField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                onChanged: (v) => setState(() => _searchQuery = v.trim()),
-                style: GoogleFonts.notoSansSinhala(color: textColor, fontSize: 13.5),
-                decoration: InputDecoration(
-                  hintText: l10n.searchHint,
-                  hintStyle: GoogleFonts.notoSansSinhala(color: hintColor, fontSize: 13),
-                  prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF10B981), size: 20),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear_rounded, size: 18),
-                          color: hintColor,
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                      : Container(
-                          margin: const EdgeInsets.only(right: 12),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: isDark ? Colors.white10 : const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
-                                ),
-                                child: Text(
-                                  'F2',
-                                  style: GoogleFonts.plusJakartaSans(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: hintColor,
-                                  ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                      style: GoogleFonts.notoSansSinhala(color: textColor, fontSize: 13.5),
+                      decoration: InputDecoration(
+                        hintText: l10n.searchHint,
+                        hintStyle: GoogleFonts.notoSansSinhala(color: hintColor, fontSize: 13),
+                        prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF10B981), size: 20),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear_rounded, size: 18),
+                                color: hintColor,
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : Container(
+                                margin: const EdgeInsets.only(right: 12),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? Colors.white10 : const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                                      ),
+                                      child: Text(
+                                        'F2',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: hintColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                        filled: true,
+                        fillColor: inputBg,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: inputBorder),
                         ),
-                  filled: true,
-                  fillColor: inputBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: inputBorder),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: inputBorder),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                      ),
+                    ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: inputBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
                 ),
-              ),
+                const SizedBox(width: 10),
+                ElevatedButton.icon(
+                  onPressed: () => _openAddProduct(initialName: _searchQuery.isNotEmpty ? _searchQuery : null),
+                  icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                  label: Text(
+                    '+ Add Product (F3)',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _openQuickCustomItem(),
+                  icon: const Icon(Icons.flash_on_rounded, size: 16, color: Color(0xFFF59E0B)),
+                  label: Text(
+                    '+ Custom Item (F4)',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: isDark ? const Color(0xFFF59E0B).withValues(alpha: 0.4) : const Color(0xFFF59E0B).withValues(alpha: 0.6),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -1242,13 +1290,112 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                     : SinhalaSearchService.filterAndRank(nonDeleted, _searchQuery);
 
                 if (filtered.isEmpty) {
+                  if (nonDeleted.isEmpty) {
+                    return Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(32),
+                        margin: const EdgeInsets.all(24),
+                        constraints: const BoxConstraints(maxWidth: 480),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: inputBorder),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                              blurRadius: 16,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.inventory_2_outlined, size: 48, color: Color(0xFF10B981)),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Your Product Catalog is Empty',
+                              style: GoogleFonts.plusJakartaSans(
+                                color: textColor,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Add your products to start ringing up sales at the counter, or scan any barcode with your barcode scanner.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.plusJakartaSans(
+                                color: hintColor,
+                                fontSize: 13,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              alignment: WrapAlignment.center,
+                              children: [
+                                ElevatedButton.icon(
+                                  onPressed: () => _openAddProduct(),
+                                  icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                                  label: const Text('+ Add New Product (F3)'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF10B981),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: () => _openQuickCustomItem(),
+                                  icon: const Icon(Icons.flash_on_rounded, size: 16, color: Color(0xFFF59E0B)),
+                                  label: const Text('+ Quick Custom Item (F4)'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
+                                    side: const BorderSide(color: Color(0xFFF59E0B)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.search_off_rounded, size: 48, color: hintColor),
                         const SizedBox(height: 10),
-                        Text(l10n.noProductsFound, style: GoogleFonts.notoSansSinhala(color: hintColor, fontSize: 14, fontWeight: FontWeight.w500)),
+                        Text(
+                          l10n.noProductsFound,
+                          style: GoogleFonts.notoSansSinhala(color: hintColor, fontSize: 14, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () => _openAddProduct(initialName: _searchQuery),
+                          icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                          label: Text("Add '$_searchQuery' as New Product (F3)"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF10B981),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -1799,8 +1946,8 @@ class _MoreMenuButton extends ConsumerWidget {
     }
 
     // ── INVENTORY ──
+    addItem('new_product', Icons.add_circle_outline_rounded, 'Add New Product (F3)', AppTheme.primaryGreen);
     if (canManageStock && modules.enableProducts) {
-      addItem('new_product', Icons.add_circle_outline_rounded, 'Add New Product (F3)', AppTheme.primaryGreen);
       addItem('discounts', Icons.local_offer_rounded, 'Discounts', AppTheme.primaryBlue);
       addItem('purchases', Icons.shopping_bag_rounded, 'Purchases', AppTheme.primaryGreen);
       addItem('suppliers', Icons.business_rounded, 'Suppliers', const Color(0xFF64748B));
@@ -1832,6 +1979,7 @@ class _MoreMenuButton extends ConsumerWidget {
     if (canManageEmployees) {
       addItem('employees', Icons.people_outline_rounded, 'Manage Employees', AppTheme.primaryPurple);
     }
+    addItem('home', Icons.dashboard_customize_rounded, 'Store Dashboard / All Modules', AppTheme.primaryGreen);
     addItem('ai', Icons.auto_awesome_rounded, 'AI Assistant', AppTheme.primaryGreen);
     addItem('theme', isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, isDark ? 'Light Mode' : 'Dark Mode', isDark ? Colors.amber : Colors.indigo);
     addItem('settings', Icons.settings_rounded, 'Settings', Colors.grey);
@@ -1854,6 +2002,9 @@ class _MoreMenuButton extends ConsumerWidget {
       itemBuilder: (_) => items,
       onSelected: (value) {
         switch (value) {
+          case 'home':
+            _push(context, const HomeScreen());
+            break;
           case 'bill_history':
             _push(context, const SalesReportScreen());
             break;
