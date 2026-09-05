@@ -4229,8 +4229,9 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
 
   Future<void> ensureOwnerExists(int branchId) async {
     final db = await database;
+    final String timestamp = DateTime.now().toIso8601String();
     
-    // Check if employee with ID 1 already exists
+    // 1. Check if employee with ID 1 already exists
     final List<Map<String, dynamic>> idExists = await db.query(
       'employees',
       where: 'id = ?',
@@ -4253,23 +4254,63 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
           whereArgs: [1]
         );
       }
-      return;
+    } else {
+      final List<Map<String, dynamic>> maps = await db.query(
+        'employees', 
+        where: 'role = ? AND branch_id = ?', 
+        whereArgs: ['owner', branchId]
+      );
+
+      if (maps.isEmpty) {
+        debugPrint('🛡️ Safety Check: No owner found for branch $branchId. Seeding default...');
+        await db.transaction((txn) async {
+          // Prevent Foreign Key constraints from failing if the branch was wiped
+          final branchCheck = await txn.query('branches', columns: ['id'], where: 'id = ?', whereArgs: [branchId]);
+          if (branchCheck.isEmpty) {
+            debugPrint('Branch $branchId missing. Creating dummy branch to satisfy foreign key constraints.');
+            await txn.insert('branches', {
+              'id': branchId,
+              'name': 'Main Branch',
+              'is_active': 1,
+              'created_at': timestamp,
+              'updated_at': timestamp,
+              'synced': 0,
+              'deleted': 0,
+            }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          }
+
+          await _insertWithId(txn, 'employees', {
+            'id': 1, // Traditional ID for the primary owner
+            'branch_id': branchId,
+            'name': 'Shop Owner',
+            'pin': '1234',
+            'role': 'owner',
+            'status': 'active',
+            'created_at': timestamp,
+            'updated_at': timestamp,
+            'synced': 0,
+            'deleted': 0,
+          });
+          
+          // Register with sync queue so it pushes to cloud if missing there too
+          await _addToSyncQueue('employees', 1, 'INSERT', executor: txn);
+        });
+      }
     }
 
-    final List<Map<String, dynamic>> maps = await db.query(
-      'employees', 
-      where: 'role = ? AND branch_id = ?', 
-      whereArgs: ['owner', branchId]
+    // 2. Also ensure at least one active cashier/staff profile exists
+    final List<Map<String, dynamic>> staffExists = await db.query(
+      'employees',
+      where: 'role != ? AND deleted = 0',
+      whereArgs: ['owner'],
+      limit: 1,
     );
 
-    if (maps.isEmpty) {
-      debugPrint('🛡️ Safety Check: No owner found for branch $branchId. Seeding default...');
-      final String timestamp = DateTime.now().toIso8601String();
+    if (staffExists.isEmpty) {
+      debugPrint('🛡️ Safety Check: No staff/cashier found for branch $branchId. Seeding default Cashier 1...');
       await db.transaction((txn) async {
-        // Prevent Foreign Key constraints from failing if the branch was wiped
         final branchCheck = await txn.query('branches', columns: ['id'], where: 'id = ?', whereArgs: [branchId]);
         if (branchCheck.isEmpty) {
-          debugPrint('Branch $branchId missing. Creating dummy branch to satisfy foreign key constraints.');
           await txn.insert('branches', {
             'id': branchId,
             'name': 'Main Branch',
@@ -4282,20 +4323,19 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
         }
 
         await _insertWithId(txn, 'employees', {
-          'id': 1, // Traditional ID for the primary owner
+          'id': 2,
           'branch_id': branchId,
-          'name': 'Shop Owner',
+          'name': 'Cashier 1',
           'pin': '1234',
-          'role': 'owner',
+          'role': 'staff',
           'status': 'active',
           'created_at': timestamp,
           'updated_at': timestamp,
           'synced': 0,
           'deleted': 0,
-        });
-        
-        // Register with sync queue so it pushes to cloud if missing there too
-        await _addToSyncQueue('employees', 1, 'INSERT', executor: txn);
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+        await _addToSyncQueue('employees', 2, 'INSERT', executor: txn);
       });
     }
   }

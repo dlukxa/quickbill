@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/theme.dart';
+import '../../main.dart';
+import '../../services/auth_service.dart';
 import '../../models/cart_item.dart';
 import '../../models/employee.dart';
 import '../../models/product.dart';
@@ -1090,6 +1093,47 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                     label: l10n.switchUser,
                     isDark: isDark,
                     onTap: () => ref.read(currentEmployeeProvider.notifier).logout(),
+                  ),
+
+                  const SizedBox(width: 4),
+                  _TopBarButton(
+                    icon: Icons.logout_rounded,
+                    label: 'Exit Shop',
+                    isDark: isDark,
+                    onTap: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Disconnect POS Terminal'),
+                          content: const Text(
+                            'Are you sure you want to disconnect this terminal from the shop? '
+                            'You will return to the shop pairing screen.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Disconnect'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true) {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.remove('desktop_shop_uid');
+                        await prefs.remove('active_shop_uid');
+                        await prefs.remove('current_employee_id');
+                        await ref.read(currentEmployeeProvider.notifier).logout();
+                        await AuthService.instance.signOut();
+                        if (context.mounted) {
+                          RestartWidget.restartApp(context);
+                        }
+                      }
+                    },
                   ),
                 ],
               ),

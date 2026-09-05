@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../config/theme.dart';
+import '../../main.dart';
 import '../../providers/employee_provider.dart';
 import '../../widgets/animate_in.dart';
 import '../../models/employee.dart';
@@ -13,30 +15,55 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ProfilePickerScreen extends ConsumerWidget {
-  const ProfilePickerScreen({super.key});
+  final Future<void> Function()? onSignOut;
+
+  const ProfilePickerScreen({super.key, this.onSignOut});
 
   // ─────────────────────────────────────────────────────
-  // Staff device: ask owner PIN before unlinking
+  // Disconnect / Sign Out / Unlink handler
   // ─────────────────────────────────────────────────────
-  Future<void> _unlinkDevice(BuildContext context, WidgetRef ref) async {
+  Future<void> _handleSignOutOrUnlink(BuildContext context, WidgetRef ref) async {
+    final isDesktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+    final isStaffDevice = ref.read(isStaffDeviceProvider);
+    final l10n = AppLocalizations.of(context);
+
+    final title = isDesktop
+        ? 'Disconnect POS Terminal'
+        : (isStaffDevice ? 'Unlink This Device' : (l10n?.signOut ?? 'Sign Out'));
+
+    final content = isDesktop
+        ? 'Are you sure you want to disconnect this terminal? You will return to the shop connection screen.'
+        : (isStaffDevice
+            ? 'Are you sure you want to unlink this device from the shop? All local data will be cleared.'
+            : (l10n?.localeName == 'si'
+                ? 'ඔබට විශ්වාසද ඉවත් වීමට අවශ්‍ය බව?'
+                : l10n?.localeName == 'ta'
+                    ? 'நீங்கள் வெளியேற விரும்புகிறீர்களா?'
+                    : l10n?.localeName == 'hi'
+                        ? 'क्या आप साइन आउट करना चाहते हैं?'
+                        : l10n?.localeName == 'bn'
+                            ? 'আপনি কি সাইন আউট করতে চান?'
+                            : l10n?.localeName == 'dv'
+                                ? 'ސައިން އައުޓް ކުރަންވީތޯ؟'
+                                : 'Are you sure you want to sign out?'));
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Unlink This Device'),
+        title: Text(title),
         content: Text(
-          'Are you sure you want to unlink this device from the shop? '
-          'All local data will be cleared.',
+          content,
           style: GoogleFonts.plusJakartaSans(fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(l10n?.cancel ?? 'Cancel'),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Unlink'),
+            child: Text(isDesktop ? 'Disconnect' : (l10n?.signOut ?? 'Sign Out')),
           ),
         ],
       ),
@@ -44,12 +71,23 @@ class ProfilePickerScreen extends ConsumerWidget {
 
     if (confirmed != true || !context.mounted) return;
 
-    // Confirmed — unlink
-    await AuthService.instance.signOut(); // clears local DB + prefs + Firebase session
+    if (onSignOut != null) {
+      await onSignOut!();
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('desktop_shop_uid');
     await prefs.remove('active_shop_uid');
+    await prefs.remove('current_employee_id');
     await prefs.setBool('is_staff_device', false);
     await ref.read(isStaffDeviceProvider.notifier).setStaffDevice(false);
+    await ref.read(currentEmployeeProvider.notifier).logout();
+    await AuthService.instance.signOut();
+
+    if (context.mounted) {
+      RestartWidget.restartApp(context);
+    }
   }
 
   @override
@@ -57,6 +95,7 @@ class ProfilePickerScreen extends ConsumerWidget {
     final employeeList = ref.watch(employeeListProvider);
     final currentEmployeeAsync = ref.watch(currentEmployeeProvider);
     final isStaffDevice = ref.watch(isStaffDeviceProvider);
+    final isDesktop = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
     final l10n = AppLocalizations.of(context);
 
     return Scaffold(
@@ -68,54 +107,22 @@ class ProfilePickerScreen extends ConsumerWidget {
           IconButton(
             onPressed: () async {
               await ref.read(syncServiceProvider).syncEssentialData();
+              await DatabaseService.instance.ensureOwnerExists(1);
               ref.invalidate(employeeListProvider);
             },
             icon: Icon(Icons.sync_rounded, color: context.onSurface.withValues(alpha: 0.5)),
             tooltip: 'Sync Profiles',
           ),
-          if (isStaffDevice)
-            // STAFF DEVICE: Show Unlink instead of Sign Out
-            IconButton(
-              onPressed: () => _unlinkDevice(context, ref),
-              icon: const Icon(Icons.link_off_rounded, color: Colors.orange),
-              tooltip: 'Unlink Device',
-            )
-          else
-            // OWNER DEVICE: Standard sign out
-            IconButton(
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text(l10n?.signOut ?? 'Sign Out'),
-                    content: Text(
-                      l10n?.localeName == 'si' ? 'ඔබට විශ්වාසද ඉවත් වීමට අවශ්‍ය බව?' :
-                      l10n?.localeName == 'ta' ? 'நீங்கள் வெளியேற விரும்புகிறீர்களா?' :
-                      l10n?.localeName == 'hi' ? 'क्या आप साइन आउट करना चाहते हैं?' :
-                      l10n?.localeName == 'bn' ? 'আপনি কি সাইন আউট করতে চান?' :
-                      l10n?.localeName == 'dv' ? 'ސައިން އައުޓް ކުރަންވީތޯ؟' :
-                      'Are you sure you want to sign out?'
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: Text(l10n?.cancel ?? 'Cancel'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        style: TextButton.styleFrom(foregroundColor: Colors.red),
-                        child: Text(l10n?.signOut ?? 'Sign Out'),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirm == true) {
-                  await AuthService.instance.signOut();
-                }
-              },
-              icon: const Icon(Icons.logout_rounded, color: Colors.red),
-              tooltip: 'Sign Out',
+          IconButton(
+            onPressed: () => _handleSignOutOrUnlink(context, ref),
+            icon: Icon(
+              isStaffDevice ? Icons.link_off_rounded : Icons.logout_rounded,
+              color: isStaffDevice ? Colors.orange : Colors.red,
             ),
+            tooltip: isDesktop
+                ? 'Disconnect POS Terminal'
+                : (isStaffDevice ? 'Unlink Device' : (l10n?.signOut ?? 'Sign Out')),
+          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -155,9 +162,15 @@ class ProfilePickerScreen extends ConsumerWidget {
                   child: employeeList.when(
                     data: (employees) {
                       final isAnonymous = FirebaseAuth.instance.currentUser?.isAnonymous ?? true;
-                      final displayEmployees = isAnonymous
-                          ? employees.where((e) => e.role != EmployeeRole.owner).toList()
-                          : employees;
+                      // On Desktop POS, or if user is authenticated as owner, or if no other profiles exist, always show owner
+                      final showOwner = isDesktop ||
+                          !isAnonymous ||
+                          !isStaffDevice ||
+                          employees.every((e) => e.role == EmployeeRole.owner);
+
+                      final displayEmployees = showOwner
+                          ? employees
+                          : employees.where((e) => e.role != EmployeeRole.owner).toList();
 
                       if (displayEmployees.isEmpty) {
                         return Center(
@@ -175,20 +188,41 @@ class ProfilePickerScreen extends ConsumerWidget {
                                 ),
                               ),
                               const SizedBox(height: 24),
-                              OutlinedButton.icon(
-                                onPressed: () async {
-                                  await ref.read(syncServiceProvider).syncEssentialData();
-                                  // Also try to ensure owner exists as a safety fallback
-                                  await DatabaseService.instance.ensureOwnerExists(1);
-                                  ref.invalidate(employeeListProvider);
-                                },
-                                icon: const Icon(Icons.cloud_download_rounded),
-                                label: const Text('Sync Profiles from Cloud'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppTheme.primaryGreen,
-                                  side: const BorderSide(color: AppTheme.primaryGreen),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                alignment: WrapAlignment.center,
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: () async {
+                                      await DatabaseService.instance.ensureOwnerExists(1);
+                                      ref.invalidate(employeeListProvider);
+                                    },
+                                    icon: const Icon(Icons.person_add_rounded),
+                                    label: const Text('Add Default Profiles (PIN: 1234)'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.primaryGreen,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  ),
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      await ref.read(syncServiceProvider).syncEssentialData();
+                                      await DatabaseService.instance.ensureOwnerExists(1);
+                                      ref.invalidate(employeeListProvider);
+                                    },
+                                    icon: const Icon(Icons.cloud_download_rounded),
+                                    label: const Text('Sync Profiles from Cloud'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: AppTheme.primaryGreen,
+                                      side: const BorderSide(color: AppTheme.primaryGreen),
+                                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

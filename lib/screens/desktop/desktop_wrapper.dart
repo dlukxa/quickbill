@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/employee_provider.dart';
+import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
 import '../auth/profile_picker_screen.dart';
 import 'desktop_pos_screen.dart';
@@ -75,8 +76,16 @@ class _DesktopWrapperState extends ConsumerState<DesktopWrapper> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kShopUidKey);
     await prefs.remove('active_shop_uid');
-    ref.read(currentEmployeeProvider.notifier).logout();
-    setState(() => _shopUid = null);
+    await prefs.remove('current_employee_id');
+    await ref.read(currentEmployeeProvider.notifier).logout();
+    try {
+      await AuthService.instance.signOut();
+    } catch (e) {
+      debugPrint('DesktopWrapper: signOut error: $e');
+    }
+    if (mounted) {
+      setState(() => _shopUid = null);
+    }
   }
 
   @override
@@ -99,28 +108,7 @@ class _DesktopWrapperState extends ConsumerState<DesktopWrapper> {
       data: (employee) {
         if (employee == null) {
           // No cashier selected → show profile/PIN picker
-          return Scaffold(
-            backgroundColor: const Color(0xFF0F172A),
-            body: Column(
-              children: [
-                // Unlink button at top-right
-                Align(
-                  alignment: Alignment.topRight,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: TextButton.icon(
-                      onPressed: _unlink,
-                      icon: const Icon(Icons.link_off_rounded,
-                          size: 16, color: Colors.white38),
-                      label: const Text('Unlink',
-                          style: TextStyle(color: Colors.white38, fontSize: 13)),
-                    ),
-                  ),
-                ),
-                const Expanded(child: ProfilePickerScreen()),
-              ],
-            ),
-          );
+          return ProfilePickerScreen(onSignOut: _unlink);
         }
         // Cashier selected → full POS
         return DesktopPosScreen(shopUid: _shopUid!);
