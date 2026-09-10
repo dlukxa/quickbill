@@ -9,9 +9,11 @@ import '../models/sale_item.dart';
 import '../models/purchase.dart';
 import '../models/supplier.dart';
 import '../utils/region_utils.dart';
+import '../utils/formatters.dart';
 import '../providers/preference_provider.dart';
 import 'pdf_service.dart';
 import 'sinhala_search_service.dart';
+import 'package:intl/intl.dart';
 
 class PrinterTestResult {
   final bool success;
@@ -92,13 +94,19 @@ class PrintingService {
   // ==========================================
 
   /// Unified receipt printing method that routes according to configured printer type
-  Future<void> printReceiptUnified(Sale sale, List<SaleItem> items, AppSettings settings) async {
+  Future<void> printReceiptUnified(
+    Sale sale,
+    List<SaleItem> items,
+    AppSettings settings, {
+    double? cashReceived,
+    double? change,
+  }) async {
     // 1. Desktop handling (macOS / Windows / Linux)
     if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
       if (settings.printerConnectionType.toLowerCase() == 'network') {
-        await printNetworkReceipt(sale, items, settings);
+        await printNetworkReceipt(sale, items, settings, cashReceived: cashReceived, change: change);
       } else {
-        await printDesktopReceipt(sale, items, settings);
+        await printDesktopReceipt(sale, items, settings, cashReceived: cashReceived, change: change);
       }
       return;
     }
@@ -108,21 +116,27 @@ class PrintingService {
 
     switch (connectionType) {
       case 'network':
-        await printNetworkReceipt(sale, items, settings);
+        await printNetworkReceipt(sale, items, settings, cashReceived: cashReceived, change: change);
         break;
 
       case 'system':
-        await printDesktopReceipt(sale, items, settings);
+        await printDesktopReceipt(sale, items, settings, cashReceived: cashReceived, change: change);
         break;
 
       case 'bluetooth':
       default:
         final bool btConnected = await isConnected();
         if (btConnected) {
-          await printReceipt(sale, items, settings);
+          await printReceipt(sale, items, settings, cashReceived: cashReceived, change: change);
         } else {
           // Fallback to system print dialog if Bluetooth is not connected
-          await PdfService.instance.generateReceipt(sale, items, settings: settings);
+          await PdfService.instance.generateReceipt(
+            sale,
+            items,
+            settings: settings,
+            cashReceived: cashReceived,
+            change: change,
+          );
         }
         break;
     }
@@ -132,9 +146,21 @@ class PrintingService {
   // DESKTOP / DIRECT WINDOWS PRINTING
   // ==========================================
 
-  Future<void> printDesktopReceipt(Sale sale, List<SaleItem> items, AppSettings settings) async {
+  Future<void> printDesktopReceipt(
+    Sale sale,
+    List<SaleItem> items,
+    AppSettings settings, {
+    double? cashReceived,
+    double? change,
+  }) async {
     try {
-      final doc = await PdfService.instance.buildReceiptDocument(sale, items, settings: settings);
+      final doc = await PdfService.instance.buildReceiptDocument(
+        sale,
+        items,
+        settings: settings,
+        cashReceived: cashReceived,
+        change: change,
+      );
       final pdfBytes = await doc.save();
 
       if (settings.selectedPrinterName != null && settings.selectedPrinterName!.isNotEmpty) {
@@ -166,7 +192,13 @@ class PrintingService {
   // WI-FI / NETWORK (LAN) RAW TCP SOCKET PRINTER
   // ==========================================
 
-  Future<void> printNetworkReceipt(Sale sale, List<SaleItem> items, AppSettings settings) async {
+  Future<void> printNetworkReceipt(
+    Sale sale,
+    List<SaleItem> items,
+    AppSettings settings, {
+    double? cashReceived,
+    double? change,
+  }) async {
     Socket? socket;
     try {
       final ip = settings.printerIpAddress.trim();
@@ -174,7 +206,13 @@ class PrintingService {
 
       socket = await Socket.connect(ip, port, timeout: const Duration(seconds: 4));
 
-      final doc = await PdfService.instance.buildReceiptDocument(sale, items, settings: settings);
+      final doc = await PdfService.instance.buildReceiptDocument(
+        sale,
+        items,
+        settings: settings,
+        cashReceived: cashReceived,
+        change: change,
+      );
       final pdfBytes = await doc.save();
 
       // Convert PDF to 203 DPI PNG bitmap
@@ -192,7 +230,13 @@ class PrintingService {
       try {
         await socket?.close();
       } catch (_) {}
-      await PdfService.instance.generateReceipt(sale, items, settings: settings);
+      await PdfService.instance.generateReceipt(
+        sale,
+        items,
+        settings: settings,
+        cashReceived: cashReceived,
+        change: change,
+      );
     }
   }
 
@@ -329,23 +373,41 @@ class PrintingService {
   // DIRECT BLUETOOTH RECEIPT METHODS
   // ==========================================
 
-  Future<void> printReceipt(Sale sale, List<SaleItem> items, AppSettings settings) async {
+  Future<void> printReceipt(
+    Sale sale,
+    List<SaleItem> items,
+    AppSettings settings, {
+    double? cashReceived,
+    double? change,
+  }) async {
     bool? isConnected = await _bluetooth.isConnected;
     if (isConnected != true) return;
 
     // If Sinhala Unicode is present, render via high-contrast raster bitmap
     if (containsSinhala(sale, items, settings)) {
-      await _printRasterReceipt(sale, items, settings);
+      await _printRasterReceipt(sale, items, settings, cashReceived: cashReceived, change: change);
       return;
     }
 
     // Direct ESC/POS text mode for pure ASCII receipts
-    await _printTextReceipt(sale, items, settings);
+    await _printTextReceipt(sale, items, settings, cashReceived: cashReceived, change: change);
   }
 
-  Future<void> _printRasterReceipt(Sale sale, List<SaleItem> items, AppSettings settings) async {
+  Future<void> _printRasterReceipt(
+    Sale sale,
+    List<SaleItem> items,
+    AppSettings settings, {
+    double? cashReceived,
+    double? change,
+  }) async {
     try {
-      final doc = await PdfService.instance.buildReceiptDocument(sale, items, settings: settings);
+      final doc = await PdfService.instance.buildReceiptDocument(
+        sale,
+        items,
+        settings: settings,
+        cashReceived: cashReceived,
+        change: change,
+      );
       final pdfBytes = await doc.save();
       final tempDir = await getTemporaryDirectory();
 
@@ -363,50 +425,123 @@ class PrintingService {
       await _bluetooth.paperCut();
     } catch (e) {
       debugPrint('Error printing raster Sinhala receipt: $e. Falling back to ESC/POS text mode.');
-      await _printTextReceipt(sale, items, settings);
+      await _printTextReceipt(sale, items, settings, cashReceived: cashReceived, change: change);
     }
   }
 
-  Future<void> _printTextReceipt(Sale sale, List<SaleItem> items, AppSettings settings) async {
-    // ESC/POS receipt generation
-    await _bluetooth.write('--------------------------------\n');
-    await _bluetooth.printCustom(settings.shopName, 3, 1); // Size 3, Align Center
+  Future<void> _printTextReceipt(
+    Sale sale,
+    List<SaleItem> items,
+    AppSettings settings, {
+    double? cashReceived,
+    double? change,
+  }) async {
+    final bool is58mm = settings.is58mm;
+    final String divider = is58mm ? '--------------------------------\n' : '------------------------------------------------\n';
+    final String doubleDivider = is58mm ? '================================\n' : '================================================\n';
+
+    // Parse effective cash received & change if not passed
+    double? effectiveCashReceived = cashReceived;
+    double? effectiveChange = change;
+    if (effectiveCashReceived == null && sale.paymentMethod.toLowerCase() == 'cash' && sale.notes != null) {
+      final cashMatch = RegExp(r'(?:Cash|Received):\s*([0-9.]+)', caseSensitive: false).firstMatch(sale.notes!);
+      if (cashMatch != null) effectiveCashReceived = double.tryParse(cashMatch.group(1)!);
+      final changeMatch = RegExp(r'Change:\s*([0-9.]+)', caseSensitive: false).firstMatch(sale.notes!);
+      if (changeMatch != null) effectiveChange = double.tryParse(changeMatch.group(1)!);
+    }
+    if (effectiveCashReceived != null && effectiveChange == null) {
+      effectiveChange = (effectiveCashReceived - sale.total).clamp(0.0, double.infinity);
+    }
+
+    // 1. STORE HEADER
+    await _bluetooth.write(divider);
+    await _bluetooth.printCustom(settings.shopName.toUpperCase(), 2, 1);
     if (settings.shopAddress.isNotEmpty) {
       await _bluetooth.printCustom(settings.shopAddress, 1, 1);
     }
     if (settings.shopPhone.isNotEmpty) {
-      await _bluetooth.printCustom(settings.shopPhone, 1, 1);
+      await _bluetooth.printCustom('Tel: ${settings.shopPhone}', 1, 1);
     }
-    await _bluetooth.printCustom('--------------------------------', 1, 1);
-    
+    await _bluetooth.write(divider);
+
+    // 2. METADATA
+    final dateStr = DateFormat('dd/MM/yyyy  HH:mm').format(sale.createdAt);
     await _bluetooth.printLeftRight('Bill No:', sale.billNumber, 1);
-    await _bluetooth.printLeftRight('Date:', sale.createdAt.toString().substring(0, 16), 1);
+    await _bluetooth.printLeftRight('Date:', dateStr, 1);
     if (sale.cashierName != null && sale.cashierName!.isNotEmpty) {
       await _bluetooth.printLeftRight('Cashier:', sale.cashierName!, 1);
     }
-    await _bluetooth.write('--------------------------------\n');
+    if (sale.customerName != null && sale.customerName!.isNotEmpty) {
+      await _bluetooth.printLeftRight('Customer:', sale.customerName!, 1);
+    }
+    await _bluetooth.write(divider);
 
+    // 3. TABLE HEADER
+    if (is58mm) {
+      await _bluetooth.printCustom('ITEM            QTY PRICE  TOTAL', 1, 0);
+    } else {
+      await _bluetooth.printCustom('ITEM                      QTY   PRICE     TOTAL', 1, 0);
+    }
+    await _bluetooth.write(divider);
+
+    // 4. ITEMS
     for (var item in items) {
+      final qty = item.soldQuantity ?? item.quantity;
+      final qtyStr = qty == qty.roundToDouble() ? qty.toInt().toString() : qty.toStringAsFixed(1);
+      final priceStr = item.unitPrice.toStringAsFixed(2);
+      final totalStr = item.total.toStringAsFixed(2);
+
       await _bluetooth.printCustom(item.productName, 1, 0);
       await _bluetooth.printLeftRight(
-        '${item.quantity} x ${globalAppRegion.currencySymbol} ${item.unitPrice.toStringAsFixed(2)}',
-        '${globalAppRegion.currencySymbol} ${item.total.toStringAsFixed(2)}',
+        '  $qtyStr x $priceStr',
+        totalStr,
         1,
       );
+      if (item.discount > 0) {
+        await _bluetooth.printCustom('   (Disc: -${item.discount.toStringAsFixed(2)})', 0, 0);
+      }
     }
 
-    await _bluetooth.printCustom('--------------------------------', 1, 1);
-    await _bluetooth.printLeftRight('SUBTOTAL:', '${globalAppRegion.currencySymbol} ${sale.subtotal.toStringAsFixed(2)}', 1);
-    if (sale.discount > 0) {
-      await _bluetooth.printLeftRight('DISCOUNT:', '-${globalAppRegion.currencySymbol} ${sale.discount.toStringAsFixed(2)}', 1);
+    await _bluetooth.write(divider);
+
+    // 5. TOTALS & SUMMARY
+    double totalPcs = items.fold(0.0, (sum, i) => sum + (i.soldQuantity ?? i.quantity));
+    final pcsStr = totalPcs == totalPcs.roundToDouble() ? totalPcs.toInt().toString() : totalPcs.toStringAsFixed(1);
+    await _bluetooth.printLeftRight('Items: ${items.length}', 'Pcs: $pcsStr', 1);
+
+    final subtotalGross = items.fold(0.0, (sum, item) => sum + item.total + item.discount);
+    await _bluetooth.printLeftRight('Subtotal:', subtotalGross.toStringAsFixed(2), 1);
+
+    final totalDiscount = items.fold(0.0, (sum, item) => sum + item.discount) + sale.discount;
+    if (totalDiscount > 0) {
+      await _bluetooth.printLeftRight('Discount:', '-${totalDiscount.toStringAsFixed(2)}', 1);
     }
-    await _bluetooth.printLeftRight('TOTAL:', '${globalAppRegion.currencySymbol} ${sale.total.toStringAsFixed(2)}', 2);
-    await _bluetooth.printCustom('--------------------------------', 1, 1);
-    
+    if (sale.tax > 0) {
+      await _bluetooth.printLeftRight('Tax (VAT):', sale.tax.toStringAsFixed(2), 1);
+    }
+    if (sale.serviceCharge > 0) {
+      await _bluetooth.printLeftRight('Service Charge:', sale.serviceCharge.toStringAsFixed(2), 1);
+    }
+
+    // 6. GRAND TOTAL
+    await _bluetooth.write(doubleDivider);
+    await _bluetooth.printLeftRight('TOTAL:', Formatters.currency(sale.total), 2);
+    await _bluetooth.write(doubleDivider);
+
+    // 7. PAYMENT DETAILS
+    await _bluetooth.printLeftRight('Payment:', sale.paymentMethod.toUpperCase(), 1);
+    if (sale.paymentMethod.toLowerCase() == 'cash' && effectiveCashReceived != null) {
+      await _bluetooth.printLeftRight('Cash Received:', effectiveCashReceived.toStringAsFixed(2), 1);
+      await _bluetooth.printLeftRight('Change / Balance:', (effectiveChange ?? 0.0).toStringAsFixed(2), 1);
+    }
+    await _bluetooth.write(divider);
+
+    // 8. FOOTER
     if (settings.receiptFooter.isNotEmpty) {
       await _bluetooth.printCustom(settings.receiptFooter, 1, 1);
     }
     await _bluetooth.printCustom('Powered by QuickBill POS', 0, 1);
+    await _bluetooth.printCustom('* ${sale.billNumber} *', 1, 1);
     await _bluetooth.write('\n\n\n'); // Feed paper
     await _bluetooth.paperCut();
   }

@@ -573,7 +573,14 @@ class _SuccessDialogState extends ConsumerState<_SuccessDialog> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final settings = ref.read(settingsProvider);
       if (settings.autoPrintReceipt) {
-        PrintingService.instance.printReceiptUnified(widget.sale, _buildSaleItems(), settings);
+        final double? cashRcvd = widget.paymentMethod.toLowerCase() == 'cash' ? (widget.total + widget.change) : null;
+        PrintingService.instance.printReceiptUnified(
+          widget.sale,
+          _buildSaleItems(),
+          settings,
+          cashReceived: cashRcvd,
+          change: widget.change,
+        );
       }
     });
   }
@@ -596,6 +603,7 @@ class _SuccessDialogState extends ConsumerState<_SuccessDialog> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.read(settingsProvider);
+    final double? cashRcvd = widget.paymentMethod.toLowerCase() == 'cash' ? (widget.total + widget.change) : null;
     return AlertDialog(
       title: Text(widget.l10n.saleComplete),
       content: Column(
@@ -624,7 +632,13 @@ class _SuccessDialogState extends ConsumerState<_SuccessDialog> {
           children: [
             TextButton.icon(
               onPressed: () async {
-                await PrintingService.instance.printReceiptUnified(widget.sale, _buildSaleItems(), settings);
+                await PrintingService.instance.printReceiptUnified(
+                  widget.sale,
+                  _buildSaleItems(),
+                  settings,
+                  cashReceived: cashRcvd,
+                  change: widget.change,
+                );
               },
               icon: const Icon(Icons.print, size: 18),
               label: Text(settings.is58mm ? 'Print Receipt (58mm)' : 'Print Receipt (80mm)'),

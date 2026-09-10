@@ -26,6 +26,10 @@ class AppSettings {
   final int printerPort; // e.g. 9100
   final String? selectedPrinterName; // Name of OS-installed printer for Windows/macOS
   final bool autoPrintReceipt;
+  final bool autoOpenCashDrawerOnCashStart;
+  final bool autoOpenCashDrawerOnSaleComplete;
+  final String cashDrawerTriggerType; // 'printer', 'com_port'
+  final String cashDrawerComPort; // e.g. 'COM1'
   final bool? _hasSelectedLanguage;
 
   bool get hasSelectedLanguage => _hasSelectedLanguage ?? false;
@@ -54,6 +58,10 @@ class AppSettings {
     this.printerPort = 9100,
     this.selectedPrinterName,
     this.autoPrintReceipt = false,
+    this.autoOpenCashDrawerOnCashStart = true,
+    this.autoOpenCashDrawerOnSaleComplete = true,
+    this.cashDrawerTriggerType = 'printer',
+    this.cashDrawerComPort = 'COM1',
     bool? hasSelectedLanguage,
   }) : _hasSelectedLanguage = hasSelectedLanguage;
 
@@ -80,6 +88,10 @@ class AppSettings {
     int? printerPort,
     String? selectedPrinterName,
     bool? autoPrintReceipt,
+    bool? autoOpenCashDrawerOnCashStart,
+    bool? autoOpenCashDrawerOnSaleComplete,
+    String? cashDrawerTriggerType,
+    String? cashDrawerComPort,
     bool? hasSelectedLanguage,
   }) {
     return AppSettings(
@@ -105,6 +117,10 @@ class AppSettings {
       printerPort: printerPort ?? this.printerPort,
       selectedPrinterName: selectedPrinterName ?? this.selectedPrinterName,
       autoPrintReceipt: autoPrintReceipt ?? this.autoPrintReceipt,
+      autoOpenCashDrawerOnCashStart: autoOpenCashDrawerOnCashStart ?? this.autoOpenCashDrawerOnCashStart,
+      autoOpenCashDrawerOnSaleComplete: autoOpenCashDrawerOnSaleComplete ?? this.autoOpenCashDrawerOnSaleComplete,
+      cashDrawerTriggerType: cashDrawerTriggerType ?? this.cashDrawerTriggerType,
+      cashDrawerComPort: cashDrawerComPort ?? this.cashDrawerComPort,
       hasSelectedLanguage: hasSelectedLanguage ?? _hasSelectedLanguage,
     );
   }
@@ -132,6 +148,10 @@ class AppSettings {
       'printer_port': printerPort,
       'selected_printer_name': selectedPrinterName,
       'auto_print_receipt': autoPrintReceipt,
+      'auto_open_cash_drawer_on_cash_start': autoOpenCashDrawerOnCashStart,
+      'auto_open_cash_drawer_on_sale_complete': autoOpenCashDrawerOnSaleComplete,
+      'cash_drawer_trigger_type': cashDrawerTriggerType,
+      'cash_drawer_com_port': cashDrawerComPort,
       'has_selected_language': hasSelectedLanguage,
       'updated_at': DateTime.now().toIso8601String(),
     };
@@ -162,6 +182,10 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   static const String _keyPrinterPort = 'printer_port';
   static const String _keySelectedPrinterName = 'selected_printer_name';
   static const String _keyAutoPrintReceipt = 'auto_print_receipt';
+  static const String _keyAutoOpenCashDrawerOnCashStart = 'auto_open_cash_drawer_on_cash_start';
+  static const String _keyAutoOpenCashDrawerOnSaleComplete = 'auto_open_cash_drawer_on_sale_complete';
+  static const String _keyCashDrawerTriggerType = 'cash_drawer_trigger_type';
+  static const String _keyCashDrawerComPort = 'cash_drawer_com_port';
 
   late SharedPreferences _prefs;
 
@@ -191,6 +215,10 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       printerPort: 9100,
       selectedPrinterName: null,
       autoPrintReceipt: false,
+      autoOpenCashDrawerOnCashStart: true,
+      autoOpenCashDrawerOnSaleComplete: true,
+      cashDrawerTriggerType: 'printer',
+      cashDrawerComPort: 'COM1',
       hasSelectedLanguage: false,
     );
   }
@@ -224,6 +252,10 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       printerPort: _prefs.getInt(_keyPrinterPort) ?? 9100,
       selectedPrinterName: _prefs.getString(_keySelectedPrinterName),
       autoPrintReceipt: _prefs.getBool(_keyAutoPrintReceipt) ?? false,
+      autoOpenCashDrawerOnCashStart: _prefs.getBool(_keyAutoOpenCashDrawerOnCashStart) ?? true,
+      autoOpenCashDrawerOnSaleComplete: _prefs.getBool(_keyAutoOpenCashDrawerOnSaleComplete) ?? true,
+      cashDrawerTriggerType: _prefs.getString(_keyCashDrawerTriggerType) ?? 'printer',
+      cashDrawerComPort: _prefs.getString(_keyCashDrawerComPort) ?? 'COM1',
       hasSelectedLanguage: _prefs.getString(_keyLanguageCode) != null,
     );
   }
@@ -369,6 +401,27 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(autoPrintReceipt: enabled);
   }
 
+  Future<void> updateAutoOpenCashDrawerOnCashStart(bool enabled) async {
+    await _prefs.setBool(_keyAutoOpenCashDrawerOnCashStart, enabled);
+    state = state.copyWith(autoOpenCashDrawerOnCashStart: enabled);
+  }
+
+  Future<void> updateAutoOpenCashDrawerOnSaleComplete(bool enabled) async {
+    await _prefs.setBool(_keyAutoOpenCashDrawerOnSaleComplete, enabled);
+    state = state.copyWith(autoOpenCashDrawerOnSaleComplete: enabled);
+  }
+
+  Future<void> updateCashDrawerTriggerType(String type) async {
+    await _prefs.setString(_keyCashDrawerTriggerType, type);
+    state = state.copyWith(cashDrawerTriggerType: type);
+  }
+
+  Future<void> updateCashDrawerComPort(String port) async {
+    final clean = port.trim().toUpperCase();
+    await _prefs.setString(_keyCashDrawerComPort, clean);
+    state = state.copyWith(cashDrawerComPort: clean);
+  }
+
   Future<void> updateFromMap(Map<String, dynamic> data) async {
     if (data.containsKey(_keyShopName)) {
       await _prefs.setString(_keyShopName, data[_keyShopName]);
@@ -437,6 +490,22 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       final val = data[_keyAutoPrintReceipt];
       final bool autoPrint = (val is bool) ? val : (val == 1 || val == 'true');
       await _prefs.setBool(_keyAutoPrintReceipt, autoPrint);
+    }
+    if (data.containsKey(_keyAutoOpenCashDrawerOnCashStart)) {
+      final val = data[_keyAutoOpenCashDrawerOnCashStart];
+      final bool autoOpen = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyAutoOpenCashDrawerOnCashStart, autoOpen);
+    }
+    if (data.containsKey(_keyAutoOpenCashDrawerOnSaleComplete)) {
+      final val = data[_keyAutoOpenCashDrawerOnSaleComplete];
+      final bool autoOpen = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyAutoOpenCashDrawerOnSaleComplete, autoOpen);
+    }
+    if (data.containsKey(_keyCashDrawerTriggerType)) {
+      await _prefs.setString(_keyCashDrawerTriggerType, data[_keyCashDrawerTriggerType]);
+    }
+    if (data.containsKey(_keyCashDrawerComPort)) {
+      await _prefs.setString(_keyCashDrawerComPort, data[_keyCashDrawerComPort]);
     }
     
     // Refresh local state

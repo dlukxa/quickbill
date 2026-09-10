@@ -51,10 +51,22 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     if (existingIndex >= 0) {
       // Product already in cart with same unit and mode, increase quantity
       final item = state[existingIndex];
-      if (item.quantity + quantity <= item.availableStock) {
-        state[existingIndex].quantity += quantity;
-        state = [...state]; // Trigger rebuild
+      state[existingIndex].quantity += quantity;
+      
+      // Recalculate discount based on updated quantity
+      if (manualDiscount != null) {
+        state[existingIndex].discount = manualDiscount;
+      } else if (!item.isQuickItem && item.product?.id != null) {
+        final discountRule = ref.read(discountsProvider.notifier).getActiveDiscountSync(item.product!.id!);
+        if (discountRule != null) {
+          if (discountRule.discountType == 'percentage') {
+            state[existingIndex].discount = (item.itemPrice * state[existingIndex].quantity * (discountRule.discountValue / 100));
+          } else {
+            state[existingIndex].discount = discountRule.discountValue * state[existingIndex].quantity;
+          }
+        }
       }
+      state = [...state]; // Trigger rebuild
     } else {
       // Add new item to cart
       state = [
@@ -70,7 +82,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
           batchId: batch?.id,
           batchNumber: batch?.batchNumber,
           batchStock: batch?.stock,
-          discount: discount,
+          discount: discount * quantity,
         )
       ];
     }

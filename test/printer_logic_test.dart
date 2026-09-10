@@ -338,5 +338,127 @@ void main() {
       expect(bytes.isNotEmpty, isTrue);
       expect(bytes.length, greaterThan(1500));
     });
+
+    test('Generates real-world Sri Lankan retail receipt with cash received and change', () async {
+      final sale = Sale(
+        billNumber: 'INV-2026-0099',
+        total: 1250.00,
+        discount: 50.00,
+        tax: 0.00,
+        serviceCharge: 0.00,
+        itemsCount: 2,
+        paymentMethod: 'CASH',
+        cashierName: 'KASUN PERERA',
+        customerName: 'WALK-IN CUSTOMER',
+        createdAt: DateTime(2026, 9, 10, 14, 30),
+      );
+
+      final items = [
+        SaleItem(
+          saleId: 10,
+          productId: 101,
+          productName: 'KEELLS BASMATI RICE 5KG',
+          quantity: 1,
+          unitPrice: 950.00,
+          costPrice: 800.00,
+          total: 950.00,
+        ),
+        SaleItem(
+          saleId: 10,
+          productId: 102,
+          productName: 'SUNLIGHT LEMON SOAP 115G',
+          quantity: 2,
+          unitPrice: 175.00,
+          costPrice: 130.00,
+          total: 350.00,
+          discount: 25.00,
+        ),
+      ];
+
+      final settings = AppSettings(
+        shopName: 'SUPER MART (PVT) LTD',
+        shopAddress: 'NO 145, GALLE ROAD, COLOMBO 03',
+        shopPhone: '011-2554433',
+        lowStockThreshold: 5,
+        receiptFooter: 'THANK YOU COME AGAIN!\nGOODS SOLD NOT RETURNABLE',
+        languageCode: 'en',
+        regionCode: 'LK',
+        businessType: 'Retail',
+        isSetupComplete: true,
+        autoSync: false,
+        entityCode: '1',
+        printerPaperSize: '80mm',
+      );
+
+      final doc = await PdfService.instance.buildReceiptDocument(
+        sale,
+        items,
+        settings: settings,
+        cashReceived: 1500.00,
+        change: 250.00,
+      );
+
+      expect(doc.document.pdfPageList.pages.isNotEmpty, isTrue);
+      final page = doc.document.pdfPageList.pages.first;
+      // 80mm in points is ~226.77 pt
+      expect(page.pageFormat.width, closeTo(80.0 * 2.834645669, 0.5));
+
+      final bytes = await doc.save();
+      expect(bytes.isNotEmpty, isTrue);
+      expect(bytes.length, greaterThan(2000));
+    });
+
+    test('Correctly extracts cash received and change from sale.notes fallback', () async {
+      final saleWithNotes = Sale(
+        billNumber: 'INV-NOTES-01',
+        total: 750.00,
+        itemsCount: 1,
+        paymentMethod: 'CASH',
+        notes: 'Cash: 1000.00 | Change: 250.00',
+        cashierName: 'ANURA',
+        createdAt: DateTime.now(),
+      );
+
+      final items = [
+        SaleItem(
+          saleId: 1,
+          productId: 1,
+          productName: 'MALIBAN BISCUITS 200G',
+          quantity: 3,
+          unitPrice: 250.00,
+          costPrice: 200.00,
+          total: 750.00,
+        ),
+      ];
+
+      final settings58 = AppSettings(
+        shopName: 'CITY GROCERY',
+        shopAddress: 'KANDY',
+        shopPhone: '081223344',
+        lowStockThreshold: 10,
+        receiptFooter: 'THANK YOU!',
+        languageCode: 'en',
+        regionCode: 'LK',
+        businessType: 'Retail',
+        isSetupComplete: true,
+        autoSync: false,
+        entityCode: '1',
+        printerPaperSize: '58mm',
+      );
+
+      final doc = await PdfService.instance.buildReceiptDocument(
+        saleWithNotes,
+        items,
+        settings: settings58,
+      );
+
+      final page = doc.document.pdfPageList.pages.first;
+      // 58mm in points is ~164.41 pt
+      expect(page.pageFormat.width, closeTo(58.0 * 2.834645669, 0.5));
+
+      final bytes = await doc.save();
+      expect(bytes.isNotEmpty, isTrue);
+      expect(bytes.length, greaterThan(1500));
+    });
   });
 }

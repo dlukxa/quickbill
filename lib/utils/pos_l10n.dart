@@ -96,4 +96,10 @@ class PosL10n {
   String get cash => isSi ? 'මුදල්' : isTa ? 'பணம்' : isHi ? 'नकद' : isBn ? 'নগদ' : 'Cash';
   String get card => isSi ? 'කාඩ්පත්' : isTa ? 'கார்டு' : isHi ? 'कार्ड' : isBn ? 'কার্ড' : 'Card';
   String get other => isSi ? 'වෙනත් / ණය' : isTa ? 'மற்றவை / கடன்' : isHi ? 'अन्य' : isBn ? 'অন্যান্য' : 'Other';
+
+  // ─── Cash Drawer ───
+  String get openDrawer => isSi ? 'ලාච්චුව අරින්න (F9)' : isTa ? 'டிராயரைத் திறக்க (F9)' : isHi ? 'दराज खोलें (F9)' : isBn ? 'ড্রয়ার খুলুন (F9)' : 'Open Drawer (F9)';
+  String get cashDrawer => isSi ? 'මුදල් ලාච්චුව' : isTa ? 'பண டிராயர்' : isHi ? 'कैश दराज' : isBn ? 'ক্যাশ ড্রয়ার' : 'Cash Drawer';
+  String get drawerEjected => isSi ? 'මුදල් ලාච්චුව විවෘත විය' : isTa ? 'பண டிராயர் திறக்கப்பட்டது' : 'Cash Drawer Opened';
+  String get ejectCashDrawer => isSi ? 'ලාච්චුව අරින්න' : isTa ? 'டிராயரைத் திறக்க' : 'Eject Drawer';
 }

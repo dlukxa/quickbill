@@ -7,6 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqlite3/open.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import '../models/product.dart';
 import '../models/product_batch.dart';
@@ -271,7 +272,7 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    if (Platform.isWindows || Platform.isLinux) {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       if (Platform.isWindows) {
         try {
           open.overrideFor(OperatingSystem.windows, () {
@@ -291,6 +292,21 @@ class DatabaseService {
         sqfliteFfiInit();
       } catch (e) {
         debugPrint('DatabaseService: sqfliteFfiInit notice: $e');
+      }
+
+      // Explicitly isolate SQLite database storage inside user application support directory
+      // (e.g. %APPDATA%/quickbill/databases on Windows) to prevent 'Access Denied' permissions errors
+      // when the application is installed in 'C:\Program Files\QuickBill POS'.
+      try {
+        final appSupportDir = await getApplicationSupportDirectory();
+        final dbDir = Directory(join(appSupportDir.path, 'databases'));
+        if (!dbDir.existsSync()) {
+          dbDir.createSync(recursive: true);
+        }
+        await databaseFactory.setDatabasesPath(dbDir.path);
+      } catch (_) {
+        // In headless unit test runners where binding is not pre-warmed,
+        // fallback gracefully to the default databaseFactory path.
       }
     }
     final dbPath = await databaseFactory.getDatabasesPath();
@@ -3241,42 +3257,79 @@ class DatabaseService {
   /// Find product by any barcode (base or batch)
   Future<Map<String, dynamic>?> findByBarcode(String barcode) async {
     final db = await database;
+    final cleanBarcode = barcode.trim();
+    if (cleanBarcode.isEmpty) return null;
     
-    // Lookup in barcode_lookup table
+    // 1. Lookup in barcode_lookup table
     final lookup = await db.query(
       'barcode_lookup',
       where: 'barcode = ?',
-      whereArgs: [barcode],
+      whereArgs: [cleanBarcode],
       limit: 1,
     );
     
-    if (lookup.isEmpty) return null;
-    
-    final productId = lookup.first['product_id'] as int;
-    final batchId = lookup.first['batch_id'] as int?;
-    
-    // Get product
-    final product = await getProductById(productId);
-    if (product == null) return null;
-    
-    // Get batch if specified
-    ProductBatch? batch;
-    if (batchId != null) {
-      final batchMaps = await db.query(
-        'product_batches',
-        where: 'id = ? AND deleted = ?',
-        whereArgs: [batchId, 0],
-        limit: 1,
-      );
-      if (batchMaps.isNotEmpty) {
-        batch = ProductBatch.fromMap(batchMaps.first);
+    if (lookup.isNotEmpty) {
+      final productId = lookup.first['product_id'] as int;
+      final batchId = lookup.first['batch_id'] as int?;
+      
+      // Get product
+      final product = await getProductById(productId);
+      if (product != null) {
+        // Get batch if specified
+        ProductBatch? batch;
+        if (batchId != null) {
+          final batchMaps = await db.query(
+            'product_batches',
+            where: 'id = ? AND deleted = ?',
+            whereArgs: [batchId, 0],
+            limit: 1,
+          );
+          if (batchMaps.isNotEmpty) {
+            batch = ProductBatch.fromMap(batchMaps.first);
+          }
+        }
+        
+        return {
+          'product': product,
+          'batch': batch,
+        };
+      }
+    }
+
+    // 2. Fallback: Search products table directly by base_barcode
+    final productMaps = await db.query(
+      'products',
+      where: 'base_barcode = ? AND deleted = 0',
+      whereArgs: [cleanBarcode],
+      limit: 1,
+    );
+    if (productMaps.isNotEmpty) {
+      final product = Product.fromMap(productMaps.first);
+      return {
+        'product': product,
+        'batch': null,
+      };
+    }
+
+    // 3. Fallback: Search product_batches table directly by barcode
+    final batchMaps = await db.query(
+      'product_batches',
+      where: 'barcode = ? AND deleted = 0',
+      whereArgs: [cleanBarcode],
+      limit: 1,
+    );
+    if (batchMaps.isNotEmpty) {
+      final batch = ProductBatch.fromMap(batchMaps.first);
+      final product = await getProductById(batch.productId);
+      if (product != null) {
+        return {
+          'product': product,
+          'batch': batch,
+        };
       }
     }
     
-    return {
-      'product': product,
-      'batch': batch,
-    };
+    return null;
   }
 
   /// Rebuild the barcode lookup table from products and batches in small chunks to prevent locking the database.

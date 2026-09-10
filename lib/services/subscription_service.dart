@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -18,9 +19,11 @@ class SubscriptionService {
     _initIAP();
   }
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final InAppPurchase _iap = InAppPurchase.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  InAppPurchase? _iap;
   StreamSubscription<List<PurchaseDetails>>? _subscription;
+
+  bool get _isIapSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
   // Single Country-Independent Product ID for all 4 launch markets (IN, BD, MV, LK)
   static const String premiumMonthlyId = 'quickbill_premium_monthly';
@@ -32,16 +35,22 @@ class SubscriptionService {
   static const String businessMonthlyId = 'business_monthly_plan';
   static const String businessYearlyId = 'business_yearly_plan';
 
-  // Initialize IAP listener
+  // Initialize IAP listener safely on supported platforms
   void _initIAP() {
-    final purchaseUpdated = _iap.purchaseStream;
-    _subscription = purchaseUpdated.listen((purchaseDetailsList) {
-      _listenToPurchaseUpdated(purchaseDetailsList);
-    }, onDone: () {
-      _subscription?.cancel();
-    }, onError: (error) {
-      debugPrint('IAP Purchase Stream Error: $error');
-    });
+    if (!_isIapSupported) return;
+    try {
+      _iap = InAppPurchase.instance;
+      final purchaseUpdated = _iap!.purchaseStream;
+      _subscription = purchaseUpdated.listen((purchaseDetailsList) {
+        _listenToPurchaseUpdated(purchaseDetailsList);
+      }, onDone: () {
+        _subscription?.cancel();
+      }, onError: (error) {
+        debugPrint('IAP Purchase Stream Error: $error');
+      });
+    } catch (e) {
+      debugPrint('IAP not available on this platform: $e');
+    }
   }
 
   void dispose() {
@@ -70,9 +79,9 @@ class SubscriptionService {
         }
 
         // Acknowledge / complete purchase with Google Play
-        if (purchaseDetails.pendingCompletePurchase) {
+        if (purchaseDetails.pendingCompletePurchase && _iap != null) {
           try {
-            await _iap.completePurchase(purchaseDetails);
+            await _iap!.completePurchase(purchaseDetails);
             debugPrint('Purchase completed with Google Play Billing');
           } catch (e) {
             debugPrint('Failed to complete purchase: $e');
@@ -84,7 +93,10 @@ class SubscriptionService {
 
   // Fetch available products from Google Play
   Future<List<ProductDetails>> fetchProducts() async {
-    final bool available = await _iap.isAvailable();
+    if (!_isIapSupported || _iap == null) {
+      return [];
+    }
+    final bool available = await _iap!.isAvailable();
     if (!available) {
       debugPrint('Google Play Billing store not available');
       return [];
@@ -95,7 +107,7 @@ class SubscriptionService {
     };
 
     try {
-      final ProductDetailsResponse response = await _iap.queryProductDetails(productIds);
+      final ProductDetailsResponse response = await _iap!.queryProductDetails(productIds);
       if (response.notFoundIDs.isNotEmpty) {
         debugPrint('Product IDs not found on Google Play Console: ${response.notFoundIDs}');
       }
@@ -150,6 +162,9 @@ class SubscriptionService {
 
   // Start the Google Play buy process
   Future<void> buySubscription(ProductDetails product, {String? offerToken}) async {
+    if (!_isIapSupported || _iap == null) {
+      throw UnsupportedError('In-app purchases are only supported on mobile devices.');
+    }
     PurchaseParam purchaseParam;
     if (product is GooglePlayProductDetails) {
       final token = offerToken ?? getSelectedOfferToken(product);
@@ -161,19 +176,22 @@ class SubscriptionService {
       purchaseParam = PurchaseParam(productDetails: product);
     }
 
-    await _iap.buyNonConsumable(purchaseParam: purchaseParam);
+    await _iap!.buyNonConsumable(purchaseParam: purchaseParam);
   }
 
   // Restore Purchases from Google Play
   Future<bool> restorePurchases() async {
-    final bool available = await _iap.isAvailable();
+    if (!_isIapSupported || _iap == null) {
+      return false;
+    }
+    final bool available = await _iap!.isAvailable();
     if (!available) {
       debugPrint('Google Play Billing not available for restore');
       return false;
     }
 
     try {
-      await _iap.restorePurchases();
+      await _iap!.restorePurchases();
       debugPrint('Purchase restoration triggered successfully');
       return true;
     } catch (e) {

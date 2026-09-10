@@ -26,7 +26,7 @@ import 'dart:ffi';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (Platform.isWindows || Platform.isLinux) {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     if (Platform.isWindows) {
       try {
         open.overrideFor(OperatingSystem.windows, () {
@@ -175,8 +175,8 @@ class QuickBillApp extends ConsumerWidget {
     final authState = ref.watch(authStateProvider);
     final isDark = settings.isDarkMode;
 
-    // ─── Windows / macOS Desktop ─────────────────────────────────────────────
-    if (Platform.isWindows || Platform.isMacOS) {
+    // ─── Windows / macOS / Linux Desktop ─────────────────────────────────────
+    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       return MaterialApp(
         title: 'QuickBill POS — Desktop',
         debugShowCheckedModeBanner: false,

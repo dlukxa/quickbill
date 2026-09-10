@@ -24,6 +24,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 import 'package:printing/printing.dart';
+import '../../services/cash_drawer_service.dart';
 import '../../generated/l10n/app_localizations.dart';
 import 'bluetooth_scanner_settings_screen.dart' as bluetooth_scanner_settings_screen;
 import 'employee_list_screen.dart';
@@ -1366,9 +1367,11 @@ class _PrinterSectionState extends ConsumerState<_PrinterSection> {
   List<Printer> _systemPrinters = [];
   bool _isBluetoothConnected = false;
   bool _isTestingNetwork = false;
+  bool _isTestingCashDrawer = false;
   
   late TextEditingController _ipController;
   late TextEditingController _portController;
+  late TextEditingController _comPortController;
 
   @override
   void initState() {
@@ -1376,6 +1379,7 @@ class _PrinterSectionState extends ConsumerState<_PrinterSection> {
     final settings = ref.read(settingsProvider);
     _ipController = TextEditingController(text: settings.printerIpAddress);
     _portController = TextEditingController(text: settings.printerPort.toString());
+    _comPortController = TextEditingController(text: settings.cashDrawerComPort);
     _checkStatus();
     _loadSystemPrinters();
   }
@@ -1384,6 +1388,7 @@ class _PrinterSectionState extends ConsumerState<_PrinterSection> {
   void dispose() {
     _ipController.dispose();
     _portController.dispose();
+    _comPortController.dispose();
     super.dispose();
   }
 
@@ -1426,6 +1431,31 @@ class _PrinterSectionState extends ConsumerState<_PrinterSection> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(result.message),
+          backgroundColor: result.success ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<void> _testCashDrawer(AppSettings settings) async {
+    setState(() => _isTestingCashDrawer = true);
+    final result = await CashDrawerService.instance.openCashDrawer(settings, isManual: true);
+    if (mounted) {
+      setState(() => _isTestingCashDrawer = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                result.success ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(result.message)),
+            ],
+          ),
           backgroundColor: result.success ? Colors.green : Colors.red,
           duration: const Duration(seconds: 4),
         ),
@@ -1709,6 +1739,121 @@ class _PrinterSectionState extends ConsumerState<_PrinterSection> {
             onChanged: (enabled) {
               notifier.updateAutoPrintReceipt(enabled);
             },
+          ),
+
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 8),
+
+          // 5. Cash Drawer Configuration Section
+          Row(
+            children: [
+              const Icon(Icons.point_of_sale_rounded, color: AppTheme.primaryGreen, size: 22),
+              const SizedBox(width: 8),
+              Text(
+                'Cash Drawer (මුදල් ලාච්චුව)',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Automatically kicks the cash drawer on Windows desktop when entering cash payment or completing cash sales. Supports ESC/POS RJ11/RJ12 printer kick and USB serial triggers.',
+            style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+          ),
+          const SizedBox(height: 12),
+
+          // Auto-Open on Cash Start
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Auto-Eject Drawer when Starting Cash Payment', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('Instantly opens drawer when Cash checkout starts or is chosen in POS'),
+            value: settings.autoOpenCashDrawerOnCashStart,
+            onChanged: (enabled) {
+              notifier.updateAutoOpenCashDrawerOnCashStart(enabled);
+            },
+          ),
+
+          // Auto-Open on Sale Complete
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Auto-Eject Drawer on Completing Cash Sale', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('Opens drawer when cash transaction payment is completed'),
+            value: settings.autoOpenCashDrawerOnSaleComplete,
+            onChanged: (enabled) {
+              notifier.updateAutoOpenCashDrawerOnSaleComplete(enabled);
+            },
+          ),
+
+          const SizedBox(height: 12),
+          Text(
+            'Drawer Trigger Hardware',
+            style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment<String>(
+                value: 'printer',
+                label: Text('Receipt Printer (RJ11/RJ12)'),
+                icon: Icon(Icons.print),
+              ),
+              ButtonSegment<String>(
+                value: 'com_port',
+                label: Text('USB Serial Trigger (COM)'),
+                icon: Icon(Icons.usb),
+              ),
+            ],
+            selected: {settings.cashDrawerTriggerType},
+            onSelectionChanged: (Set<String> newSelection) {
+              notifier.updateCashDrawerTriggerType(newSelection.first);
+            },
+          ),
+
+          if (settings.cashDrawerTriggerType == 'com_port') ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _comPortController,
+                    decoration: const InputDecoration(
+                      labelText: 'Serial COM Port (e.g. COM1, COM2, COM3)',
+                      hintText: 'COM1',
+                      prefixIcon: Icon(Icons.settings_ethernet),
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    onSubmitted: (val) {
+                      notifier.updateCashDrawerComPort(val);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    notifier.updateCashDrawerComPort(_comPortController.text);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('COM port saved!'), duration: Duration(seconds: 2)),
+                    );
+                  },
+                  child: const Text('Save Port'),
+                ),
+              ],
+            ),
+          ],
+
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _isTestingCashDrawer ? null : () => _testCashDrawer(settings),
+            icon: _isTestingCashDrawer
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.point_of_sale_rounded, color: AppTheme.primaryGreen),
+            label: const Text('Test Eject Cash Drawer Now', style: TextStyle(fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              side: const BorderSide(color: AppTheme.primaryGreen),
+            ),
           ),
         ],
       ),

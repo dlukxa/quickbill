@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,6 +31,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isGoogleLoading = false;
 
   Future<void> _handleGoogleSignIn() async {
+    if (Platform.isWindows || Platform.isLinux) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Google Sign-In is available on Mobile & Web. Please sign in with your email and password on Windows desktop.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     setState(() => _isGoogleLoading = true);
     try {
       final auth = ref.read(authServiceProvider);

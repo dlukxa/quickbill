@@ -8,6 +8,7 @@ import '../../services/sync_service.dart';
 import '../auth/profile_picker_screen.dart';
 import 'desktop_pos_screen.dart';
 import 'desktop_qr_link_screen.dart';
+import 'desktop_shell.dart';
 
 const _kShopUidKey = 'desktop_shop_uid';
 
@@ -63,7 +64,9 @@ class _DesktopWrapperState extends ConsumerState<DesktopWrapper> {
   Future<void> _syncShopData(String shopUid) async {
     // Trigger a lightweight sync of employees, products, and customers from Firestore
     try {
-      await ref.read(syncServiceProvider).syncEssentialData();
+      final syncService = ref.read(syncServiceProvider);
+      await syncService.syncEssentialData();
+      syncService.startSync();
       ref.invalidate(employeeListProvider);
       ref.invalidate(customersProvider);
       debugPrint('DesktopWrapper: synced shop data for $shopUid');
@@ -110,8 +113,8 @@ class _DesktopWrapperState extends ConsumerState<DesktopWrapper> {
           // No cashier selected → show profile/PIN picker
           return ProfilePickerScreen(onSignOut: _unlink);
         }
-        // Cashier selected → full POS
-        return DesktopPosScreen(shopUid: _shopUid!);
+        // Cashier selected → full Desktop Shell with POS, Inventory, Sales, Customers, Settings
+        return const DesktopShell();
       },
       loading: () => const Scaffold(
         backgroundColor: Color(0xFF0F172A),

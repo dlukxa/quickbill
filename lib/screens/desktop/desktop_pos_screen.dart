@@ -16,6 +16,7 @@ import '../../models/sale_item.dart';
 import '../../providers/sale_provider.dart';
 import '../../services/pdf_service.dart';
 import '../../services/printing_service.dart';
+import '../../services/cash_drawer_service.dart';
 import '../../services/share_service.dart';
 import '../../providers/preference_provider.dart';
 import '../../providers/business_modules_provider.dart';
@@ -66,7 +67,7 @@ import '../services/services_list_screen.dart';
 class DesktopPosScreen extends ConsumerStatefulWidget {
   final String shopUid;
 
-  const DesktopPosScreen({super.key, required this.shopUid});
+  const DesktopPosScreen({super.key, this.shopUid = ''});
 
   @override
   ConsumerState<DesktopPosScreen> createState() => _DesktopPosScreenState();
@@ -83,11 +84,19 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
   // We buffer characters and detect scanner input vs. human typing.
   final StringBuffer _barcodeBuffer = StringBuffer();
   DateTime? _lastKeystroke;
+  DateTime? _lastScanHandledTime;
+  String? _lastScanHandledValue;
+  bool _isProcessingScan = false;
 
   @override
   void initState() {
     super.initState();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
@@ -96,6 +105,34 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _ejectCashDrawer({bool isManual = false}) async {
+    final settings = ref.read(settingsProvider);
+    final res = await CashDrawerService.instance.openCashDrawer(settings, isManual: isManual);
+    if (isManual && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.point_of_sale_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  res.success ? PosL10n.of(settings.languageCode).drawerEjected : res.message,
+                  style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: res.success ? AppTheme.primaryGreen : Colors.orange.shade800,
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          width: 320,
+        ),
+      );
+    }
   }
 
   void _openAddStockPicker() {
@@ -329,6 +366,11 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
   bool _handleKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
 
+    // Do not process global POS shortcuts if a modal/dialog or other route is currently pushed on top
+    if (mounted && ModalRoute.of(context)?.isCurrent != true) {
+      return false;
+    }
+
     final key = event.logicalKey;
 
     // F2 = Focus Search Bar
@@ -383,30 +425,28 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
       return true;
     }
 
+    // F9 or Ctrl+D / Cmd+D = Eject Cash Drawer on PC
+    if (key == LogicalKeyboardKey.f9 ||
+        (key == LogicalKeyboardKey.keyD &&
+            (HardwareKeyboard.instance.isControlPressed ||
+                HardwareKeyboard.instance.isMetaPressed))) {
+      _ejectCashDrawer(isManual: true);
+      return true;
+    }
+
     // Enter or Tab = End of wired/USB barcode scan (scanners send Enter, NumpadEnter, or Tab)
     if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter ||
         key == LogicalKeyboardKey.tab) {
-      String barcode = _barcodeBuffer.toString().trim();
+      String candidate = _searchController.text.trim();
+      if (candidate.isEmpty) {
+        candidate = _barcodeBuffer.toString().trim();
+      }
       _barcodeBuffer.clear();
       _lastKeystroke = null;
 
-      // Fallback: If user had search field focused, the scanner typed into the search controller
-      if (barcode.isEmpty && _searchController.text.trim().isNotEmpty) {
-        final searchText = _searchController.text.trim();
-        // If it's pure numbers or alphanumeric barcode format (length >= 3)
-        if (searchText.length >= 3 && RegExp(r'^[0-9A-Za-z\-_./+*#@]+$').hasMatch(searchText)) {
-          barcode = searchText;
-        }
-      }
-
-      if (barcode.isNotEmpty && barcode.length >= 3) {
-        // If the search controller was populated with the scanned barcode, clear it so the product grid isn't restricted
-        if (_searchController.text.trim() == barcode || _searchController.text.contains(barcode)) {
-          _searchController.clear();
-          setState(() => _searchQuery = '');
-        }
-        _processBarcode(barcode);
+      if (candidate.isNotEmpty) {
+        _handleBarcodeScan(candidate);
         return true; // consume event
       }
       return false;
@@ -417,7 +457,7 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
         ? now.difference(_lastKeystroke!).inMilliseconds
         : 0;
 
-    final char = _keyToChar(key);
+    final char = _keyToChar(event);
     if (char != null) {
       // Long pause (>350ms) = human typing manually, reset scanner buffer
       if (_barcodeBuffer.isNotEmpty && timeSinceLast > 350) {
@@ -430,8 +470,33 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
     return false;
   }
 
-  String? _keyToChar(LogicalKeyboardKey key) {
+  String? _keyToChar(KeyEvent event) {
     const validChars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_./+*#@';
+    final key = event.logicalKey;
+    // 1. Check Numpad keys explicitly (many USB scanners emit numpad keycodes in HID emulation)
+    if (key == LogicalKeyboardKey.numpad0) return '0';
+    if (key == LogicalKeyboardKey.numpad1) return '1';
+    if (key == LogicalKeyboardKey.numpad2) return '2';
+    if (key == LogicalKeyboardKey.numpad3) return '3';
+    if (key == LogicalKeyboardKey.numpad4) return '4';
+    if (key == LogicalKeyboardKey.numpad5) return '5';
+    if (key == LogicalKeyboardKey.numpad6) return '6';
+    if (key == LogicalKeyboardKey.numpad7) return '7';
+    if (key == LogicalKeyboardKey.numpad8) return '8';
+    if (key == LogicalKeyboardKey.numpad9) return '9';
+    if (key == LogicalKeyboardKey.numpadDecimal) return '.';
+    if (key == LogicalKeyboardKey.numpadSubtract) return '-';
+    if (key == LogicalKeyboardKey.numpadAdd) return '+';
+    if (key == LogicalKeyboardKey.numpadDivide) return '/';
+    if (key == LogicalKeyboardKey.numpadMultiply) return '*';
+
+    // 2. Direct character if available on KeyEvent
+    final char = event.character;
+    if (char != null && char.length == 1 && validChars.contains(char)) {
+      return char;
+    }
+
+    // 3. Fallback to keyLabel
     final label = key.keyLabel;
     if (label.length == 1 && validChars.contains(label)) {
       return label;
@@ -439,96 +504,117 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
     return null;
   }
 
+  Future<void> _handleBarcodeScan(String raw) async {
+    final clean = raw.trim();
+    if (clean.isEmpty) return;
+
+    final now = DateTime.now();
+    // Debounce duplicate events (e.g. KeyDownEvent AND onSubmitted firing within 250ms for the same scan)
+    if (_lastScanHandledValue == clean &&
+        _lastScanHandledTime != null &&
+        now.difference(_lastScanHandledTime!).inMilliseconds < 250) {
+      return;
+    }
+
+    if (_isProcessingScan) return;
+    _isProcessingScan = true;
+    _lastScanHandledValue = clean;
+    _lastScanHandledTime = now;
+
+    try {
+      await _processBarcode(clean);
+    } finally {
+      _isProcessingScan = false;
+      _barcodeBuffer.clear();
+      _lastKeystroke = null;
+      if (mounted) {
+        if (_searchController.text.isNotEmpty) {
+          _searchController.clear();
+          setState(() => _searchQuery = '');
+        }
+        _searchFocusNode.requestFocus();
+      }
+    }
+  }
+
   Future<void> _processBarcode(String barcode) async {
     final clean = barcode.trim();
     if (clean.isEmpty) return;
 
-    // 1. Try finding via database findByBarcode (handles batch barcodes & base barcodes)
+    Product? foundProduct;
+    ProductBatch? foundBatch;
+
+    // 1. Try finding via database findByBarcode (handles batch barcodes, base barcodes, and lookup table)
     final lookup = await DatabaseService.instance.findByBarcode(clean);
     if (lookup != null && lookup['product'] != null) {
-      final Product p = lookup['product'] as Product;
-      final ProductBatch? batch = lookup['batch'] as ProductBatch?;
-
-      if (p.hasMultipleSellingModes || p.isVariableQuantity) {
-        if (!mounted) return;
-        VariableQuantityDialog.show(
-          context,
-          product: p,
-          isDark: ref.read(settingsProvider).isDarkMode,
-          onConfirmed: (qty, unit, {sellingMode, packSize, packSizeUnit, customPrice}) {
-            ref.read(cartProvider.notifier).addProduct(
-              p,
-              quantity: qty,
-              unit: unit,
-              sellingMode: sellingMode,
-              packSize: packSize,
-              packSizeUnit: packSizeUnit,
-              customPrice: customPrice,
-              batch: batch,
-            );
-          },
-        );
-        _showBarcodeSnack('🔍 ${p.sinhalaOrName} scanned. Select selling mode/quantity.');
-        return;
-      }
-
-      ref.read(cartProvider.notifier).addProduct(p, batch: batch);
-      _showBarcodeSnack('✓ ${p.sinhalaOrName} added (${Formatters.currency(p.price)})');
-      return;
+      foundProduct = lookup['product'] as Product;
+      foundBatch = lookup['batch'] as ProductBatch?;
     }
 
-    // 2. Try in-memory products list
-    final products = ref.read(productsProvider).valueOrNull ?? [];
-    Product? found;
-
-    // Search by barcode field first
-    for (final p in products) {
-      if (p.baseBarcode == clean) {
-        found = p;
-        break;
+    // 2. Try in-memory products list if not found in database lookup
+    if (foundProduct == null) {
+      final products = ref.read(productsProvider).valueOrNull ?? [];
+      for (final p in products) {
+        if (p.baseBarcode?.trim() == clean) {
+          foundProduct = p;
+          break;
+        }
+        if (p.batches != null) {
+          for (final b in p.batches!) {
+            if (b.barcode?.trim() == clean) {
+              foundProduct = p;
+              foundBatch = b;
+              break;
+            }
+          }
+          if (foundProduct != null) break;
+        }
       }
-    }
 
-    // Search by ID if purely numeric
-    if (found == null) {
-      final id = int.tryParse(clean);
-      if (id != null) {
-        for (final p in products) {
-          if (p.id == id) {
-            found = p;
-            break;
+      // Search by ID if purely numeric
+      if (foundProduct == null) {
+        final id = int.tryParse(clean);
+        if (id != null) {
+          for (final p in products) {
+            if (p.id == id) {
+              foundProduct = p;
+              break;
+            }
           }
         }
       }
     }
 
-    if (found != null) {
-      if (found.hasMultipleSellingModes || found.isVariableQuantity) {
-        if (!mounted) return;
-        VariableQuantityDialog.show(
-          context,
-          product: found,
-          isDark: ref.read(settingsProvider).isDarkMode,
-          onConfirmed: (qty, unit, {sellingMode, packSize, packSizeUnit, customPrice}) {
-            ref.read(cartProvider.notifier).addProduct(
-              found!,
-              quantity: qty,
-              unit: unit,
-              sellingMode: sellingMode,
-              packSize: packSize,
-              packSizeUnit: packSizeUnit,
-              customPrice: customPrice,
-            );
-          },
-        );
-        _showBarcodeSnack('🔍 ${found.sinhalaOrName} scanned. Select selling mode/quantity.');
-      } else {
-        ref.read(cartProvider.notifier).addProduct(found);
-        _showBarcodeSnack('✓ ${found.sinhalaOrName} added (${Formatters.currency(found.price)})');
-      }
+    if (foundProduct != null) {
+      final p = foundProduct;
+      // In POS desktop barcode scanning, immediately add 1 unit or pack to cart without blocking dialogs
+      final sellingMode = (p.allowPack && !p.allowLoose) || (p.allowPack && p.packPrice != null && p.packPrice! > 0)
+          ? 'pack'
+          : (p.isVariableQuantity ? 'weight' : 'piece');
+      final effectiveUnit = sellingMode == 'pack' ? (p.packUnit.isNotEmpty ? p.packUnit : 'pack') : p.baseUnit;
+      final customPrice = sellingMode == 'pack' ? p.packPrice : null;
+
+      ref.read(cartProvider.notifier).addProduct(
+        p,
+        quantity: 1.0,
+        unit: effectiveUnit,
+        sellingMode: sellingMode,
+        packSize: sellingMode == 'pack' ? p.packSize : null,
+        packSizeUnit: sellingMode == 'pack' ? p.packSizeUnit : null,
+        customPrice: customPrice,
+        batch: foundBatch,
+      );
+
+      // Play click sound for immediate POS audible feedback
+      SystemSound.play(SystemSoundType.click);
+
+      final priceDisplay = Formatters.currency(customPrice ?? p.price);
+      _showBarcodeSnack('✓ ${p.sinhalaOrName} added ($priceDisplay)');
     } else {
+      // Product not found: play alert sound and display warning
+      SystemSound.play(SystemSoundType.alert);
       _showBarcodeSnack(
-        '⚠ No product found for barcode: $clean',
+        '⚠ Product not found: $clean',
         isError: true,
         actionLabel: '+ Register Product',
         onAction: () => _openAddProduct(initialBarcode: clean),
@@ -1023,6 +1109,14 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                   ),
                   const SizedBox(width: 4),
 
+                  _TopBarButton(
+                    icon: Icons.point_of_sale_rounded,
+                    label: l10n.openDrawer,
+                    isDark: isDark,
+                    onTap: () => _ejectCashDrawer(isManual: true),
+                  ),
+                  const SizedBox(width: 4),
+
                   _MoreMenuButton(
                     employee: employee,
                     isOwner: isOwner,
@@ -1181,6 +1275,9 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                     child: TextField(
                       controller: _searchController,
                       focusNode: _searchFocusNode,
+                      autofocus: true,
+                      textInputAction: TextInputAction.go,
+                      onSubmitted: (v) => _handleBarcodeScan(v),
                       onChanged: (v) => setState(() => _searchQuery = v.trim()),
                       style: GoogleFonts.notoSansSinhala(color: textColor, fontSize: 13.5),
                       decoration: InputDecoration(
@@ -2772,6 +2869,15 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
   void initState() {
     super.initState();
     _cashController.text = widget.total.toStringAsFixed(0);
+    // Automatically eject cash drawer on desktop when starting cash payment function
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final settings = ref.read(settingsProvider);
+        if (_paymentMethod == 'cash' && settings.autoOpenCashDrawerOnCashStart) {
+          CashDrawerService.instance.openCashDrawer(settings);
+        }
+      }
+    });
   }
 
   @override
@@ -2829,13 +2935,28 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
         customerPhone: widget.customer?.phone,
       );
 
+      // Eject cash drawer upon completing cash sale if enabled
+      final settings = ref.read(settingsProvider);
+      if (_paymentMethod == 'cash' && settings.autoOpenCashDrawerOnSaleComplete) {
+        CashDrawerService.instance.openCashDrawer(settings);
+      }
+
       // Clear cart & customer
       ref.read(cartProvider.notifier).clear();
       ref.read(selectedCustomerProvider.notifier).state = null;
 
       if (mounted) {
         Navigator.pop(context); // Close checkout dialog
-        _showPostSaleDialog(rootNavContext, ref, createdSale, widget.cartItems, widget.customer, _netTotal, _change);
+        _showPostSaleDialog(
+          rootNavContext,
+          ref,
+          createdSale,
+          widget.cartItems,
+          widget.customer,
+          _netTotal,
+          _change,
+          cashReceived: _paymentMethod == 'cash' ? _cashPaid : null,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -2977,7 +3098,16 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
                   _MethodChip(
                     label: PosL10n.of(ref.watch(settingsProvider).languageCode).cashPayment,
                     isSelected: _paymentMethod == 'cash',
-                    onTap: () => setState(() => _paymentMethod = 'cash'),
+                    onTap: () {
+                      final wasNotCash = _paymentMethod != 'cash';
+                      setState(() => _paymentMethod = 'cash');
+                      if (wasNotCash) {
+                        final settings = ref.read(settingsProvider);
+                        if (settings.autoOpenCashDrawerOnCashStart) {
+                          CashDrawerService.instance.openCashDrawer(settings);
+                        }
+                      }
+                    },
                     isDark: isDark,
                   ),
                   _MethodChip(
@@ -3068,9 +3198,68 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
                         borderRadius: BorderRadius.circular(10), borderSide: inputBorder),
                   ),
                 ),
-                const SizedBox(height: 10),
-                Text('QUICK AMOUNTS',
-                    style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w700, color: subTextColor, letterSpacing: 0.8)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'QUICK AMOUNTS',
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: subTextColor,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () async {
+                        final s = ref.read(settingsProvider);
+                        final res = await CashDrawerService.instance.openCashDrawer(s, isManual: true);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const Icon(Icons.point_of_sale_rounded, color: Colors.white, size: 16),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      res.success ? PosL10n.of(s.languageCode).drawerEjected : res.message,
+                                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: res.success ? AppTheme.primaryGreen : Colors.orange.shade800,
+                              duration: const Duration(seconds: 2),
+                              behavior: SnackBarBehavior.floating,
+                              width: 300,
+                            ),
+                          );
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.point_of_sale_rounded, size: 14, color: AppTheme.primaryGreen),
+                            const SizedBox(width: 4),
+                            Text(
+                              PosL10n.of(ref.watch(settingsProvider).languageCode).openDrawer,
+                              style: GoogleFonts.inter(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primaryGreen,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 6,
@@ -3087,6 +3276,13 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
                         label: Formatters.currencySimple(amt),
                         isSelected: _cashPaid == amt,
                         onTap: () => _setAmount(amt),
+                        isDark: isDark,
+                      ),
+                    for (final inc in [100.0, 500.0, 1000.0, 5000.0])
+                      _QuickAmtChip(
+                        label: '+${Formatters.currencySimple(inc)}',
+                        isSelected: false,
+                        onTap: () => _setAmount(_cashPaid + inc),
                         isDark: isDark,
                       ),
                   ],
@@ -3248,8 +3444,9 @@ void _showPostSaleDialog(
   List<CartItem> cartItems,
   Customer? customer,
   double total,
-  double change,
-) {
+  double change, {
+  double? cashReceived,
+}) {
   final settings = ref.read(settingsProvider);
   final isDark = Theme.of(context).brightness == Brightness.dark;
   final dialogBg = isDark ? const Color(0xFF1E293B) : Colors.white;
@@ -3271,6 +3468,18 @@ void _showPostSaleDialog(
             discount: c.discount,
           ))
       .toList();
+
+  final effectiveCashReceived = cashReceived ?? (sale.paymentMethod.toLowerCase() == 'cash' ? (total + change) : null);
+
+  if (settings.autoPrintReceipt) {
+    PrintingService.instance.printReceiptUnified(
+      sale,
+      buildSaleItems(),
+      settings,
+      cashReceived: effectiveCashReceived,
+      change: change,
+    );
+  }
 
   showDialog(
     context: context,
@@ -3369,7 +3578,13 @@ void _showPostSaleDialog(
               label: Text(settings.is58mm ? 'Print Receipt (58mm)' : 'Print Receipt (80mm)'),
               onPressed: () async {
                 try {
-                  await PrintingService.instance.printReceiptUnified(sale, buildSaleItems(), settings);
+                  await PrintingService.instance.printReceiptUnified(
+                    sale,
+                    buildSaleItems(),
+                    settings,
+                    cashReceived: effectiveCashReceived,
+                    change: change,
+                  );
                 } catch (e) {
                   debugPrint('Error printing receipt: $e');
                 }
