@@ -80,9 +80,13 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
 
     try {
       // 1. Initialize Firebase
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      try {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      } catch (e) {
+        debugPrint('⚠️ Firebase.initializeApp notice: $e');
+      }
 
       // Activate Firebase App Check (mobile platforms only).
       if (!kIsWeb && !Platform.isWindows && !Platform.isLinux) {
@@ -100,8 +104,14 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
         }
       }
       
-      // Initialize Remote Config for dynamic cloud keys and flags
-      await RemoteConfigService.instance.initialize();
+      // Initialize Remote Config for dynamic cloud keys and flags (mobile/macOS only)
+      if (!kIsWeb && !Platform.isWindows && !Platform.isLinux) {
+        try {
+          await RemoteConfigService.instance.initialize();
+        } catch (e) {
+          debugPrint('RemoteConfig desktop notice: $e');
+        }
+      }
       
       // Initialize Crashlytics for crash and ANR tracking (mobile/macOS only)
       if (!kIsWeb && !Platform.isWindows && !Platform.isLinux) {
@@ -123,21 +133,29 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       });
 
       // Check for forced app updates
-      await UpdateService.instance.checkUpdateRequired();
+      try {
+        await UpdateService.instance.checkUpdateRequired();
+      } catch (e) {
+        debugPrint('Update check notice: $e');
+      }
       
       // Auto-login workaround for Android Emulator Keystore bug
-      if (FirebaseAuth.instance.currentUser == null) {
-        final prefs = await SharedPreferences.getInstance();
-        final devEmail = prefs.getString('dev_email_cache');
-        final devPass = prefs.getString('dev_password_cache');
-        if (devEmail != null && devPass != null) {
-          try {
-            await FirebaseAuth.instance.signInWithEmailAndPassword(email: devEmail, password: devPass);
-            debugPrint('🛡️ Dev Auto-login succeeded');
-          } catch (e) {
-            debugPrint('🛡️ Dev Auto-login failed: $e');
+      try {
+        if (FirebaseAuth.instance.currentUser == null) {
+          final prefs = await SharedPreferences.getInstance();
+          final devEmail = prefs.getString('dev_email_cache');
+          final devPass = prefs.getString('dev_password_cache');
+          if (devEmail != null && devPass != null) {
+            try {
+              await FirebaseAuth.instance.signInWithEmailAndPassword(email: devEmail, password: devPass);
+              debugPrint('🛡️ Dev Auto-login succeeded');
+            } catch (e) {
+              debugPrint('🛡️ Dev Auto-login failed: $e');
+            }
           }
         }
+      } catch (e) {
+        debugPrint('FirebaseAuth check notice: $e');
       }
       
       if (!mounted) return;
@@ -146,11 +164,17 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
         _statusMessage = 'Establishing notification dispatcher...';
       });
 
-      // 2. Initialize Notifications
-      await NotificationService.instance.init().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () => null,
-      );
+      // 2. Initialize Notifications (mobile/macOS only)
+      if (!Platform.isWindows && !Platform.isLinux) {
+        try {
+          await NotificationService.instance.init().timeout(
+            const Duration(seconds: 3),
+            onTimeout: () => null,
+          );
+        } catch (e) {
+          debugPrint('NotificationService notice: $e');
+        }
+      }
 
       if (!mounted) return;
       setState(() {

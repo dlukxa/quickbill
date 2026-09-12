@@ -19,6 +19,7 @@ import 'screens/startup/startup_loading_screen.dart';
 import 'screens/startup/language_selection_screen.dart';
 import 'utils/fallback_localizations.dart';
 import 'screens/desktop/desktop_wrapper.dart';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqlite3/open.dart';
 import 'dart:ffi';
@@ -26,14 +27,29 @@ import 'dart:ffi';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Protect against fatal crashes from uncaught errors
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('GLOBAL FLUTTER ERROR: ${details.exception}\n${details.stack}');
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('GLOBAL UNCAUGHT ASYNC ERROR: $error\n$stack');
+    return true; // Prevents process termination
+  };
+
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     if (Platform.isWindows) {
       try {
         open.overrideFor(OperatingSystem.windows, () {
-          final exeDir = File(Platform.resolvedExecutable).parent.path;
-          final localDll = File('$exeDir\\sqlite3.dll');
-          if (localDll.existsSync()) {
-            return DynamicLibrary.open(localDll.path);
+          try {
+            final exeDir = File(Platform.resolvedExecutable).parent.path;
+            final localDll = File('$exeDir\\sqlite3.dll');
+            if (localDll.existsSync()) {
+              return DynamicLibrary.open(localDll.path);
+            }
+          } catch (e) {
+            debugPrint('⚠️ Error opening local sqlite3.dll: $e');
           }
           return DynamicLibrary.open('sqlite3.dll');
         });

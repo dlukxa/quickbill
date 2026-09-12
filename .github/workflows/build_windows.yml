@@ -43,11 +43,29 @@ jobs:
       - name: Bundle sqlite3.dll and Visual C++ Redistributable
         shell: pwsh
         run: |
+          # 1. Bundle sqlite3.dll
           if (!(Test-Path "windows\sqlite3.dll")) {
             Invoke-WebRequest -Uri "https://www.sqlite.org/2024/sqlite-dll-win-x64-3460100.zip" -OutFile "sqlite.zip"
             Expand-Archive -Path "sqlite.zip" -DestinationPath "windows" -Force
           }
           Copy-Item "windows\sqlite3.dll" "build\windows\x64\runner\Release\" -Force
+
+          # 2. Bundle Visual C++ Runtime DLLs directly into Release folder so app is 100% self-contained
+          $vsRedist = Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC" -Directory -ErrorAction SilentlyContinue
+          if ($vsRedist) {
+            $crtDir = Join-Path $vsRedist[0].FullName "x64\Microsoft.VC143.CRT"
+            if (Test-Path $crtDir) {
+              Copy-Item "$crtDir\*.dll" "build\windows\x64\runner\Release\" -Force
+              Write-Host "Successfully bundled MSVC CRT DLLs from $crtDir"
+            }
+          }
+          if (!(Test-Path "build\windows\x64\runner\Release\msvcp140.dll")) {
+            Copy-Item "C:\Windows\System32\msvcp140.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
+            Copy-Item "C:\Windows\System32\vcruntime140.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
+            Copy-Item "C:\Windows\System32\vcruntime140_1.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
+          }
+
+          # 3. Download standalone vc_redist.x64.exe for Inno Setup installer
           Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc_redist.x64.exe"
           Copy-Item "vc_redist.x64.exe" "build\windows\x64\runner\Release\" -Force
 
