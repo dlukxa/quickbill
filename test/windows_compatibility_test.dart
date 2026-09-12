@@ -73,6 +73,8 @@ void main() {
         isSetupComplete: true,
         autoSync: true,
         entityCode: '1',
+        receiptLanguage: 'en',
+        receiptTemplate: 'classic',
       );
 
       expect(PrintingService.instance.containsSinhala(sale, [], englishSettings), isFalse);

@@ -50,8 +50,8 @@ import '../../widgets/cart_quantity_edit_dialog.dart';
 import '../suppliers/supplier_list_screen.dart';
 import '../suppliers/purchase_management_screen.dart';
 import '../returns/sales_history_screen.dart';
-import '../../models/product_batch.dart';
-import '../../services/database_service.dart';
+import 'dart:async';
+import '../../services/pos_barcode_service.dart';
 import '../discount/discount_list_screen.dart';
 import '../../utils/pos_l10n.dart';
 import '../ai/ai_assistant_screen.dart';
@@ -79,14 +79,16 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
   final _searchFocusNode = FocusNode();
   bool _showCashierPanel = false;
 
-  // ─── Barcode Scanner (Keyboard Capture) ───────────────────────────────────
+  // ─── Barcode Scanner (Keyboard Capture & Sequential Queue) ────────────────
   // USB/BT scanners send keystrokes very fast then press Enter or Tab.
-  // We buffer characters and detect scanner input vs. human typing.
+  // We buffer characters and queue scans sequentially to prevent race conditions.
   final StringBuffer _barcodeBuffer = StringBuffer();
   DateTime? _lastKeystroke;
   DateTime? _lastScanHandledTime;
   String? _lastScanHandledValue;
-  bool _isProcessingScan = false;
+  Timer? _scanCompletionTimer;
+  final List<String> _scanQueue = [];
+  bool _isProcessingQueue = false;
 
   @override
   void initState() {
@@ -101,6 +103,7 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
 
   @override
   void dispose() {
+    _scanCompletionTimer?.cancel();
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _searchController.dispose();
     _searchFocusNode.dispose();
@@ -196,10 +199,12 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    TextField(
+                    SinglishTextField(
                       controller: searchCtrl,
+                      showSuggestionBanner: false,
                       autofocus: true,
                       onChanged: (_) => setModalState(() {}),
+                      onConverted: () => setModalState(() {}),
                       decoration: InputDecoration(
                         hintText: 'Search product name (Sinhala/Singlish), barcode...',
                         prefixIcon: const Icon(Icons.search_rounded),
@@ -438,6 +443,7 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
     if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter ||
         key == LogicalKeyboardKey.tab) {
+      _scanCompletionTimer?.cancel();
       String candidate = _searchController.text.trim();
       if (candidate.isEmpty) {
         candidate = _barcodeBuffer.toString().trim();
@@ -446,7 +452,7 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
       _lastKeystroke = null;
 
       if (candidate.isNotEmpty) {
-        _handleBarcodeScan(candidate);
+        _enqueueBarcodeScan(candidate);
         return true; // consume event
       }
       return false;
@@ -459,12 +465,27 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
 
     final char = _keyToChar(event);
     if (char != null) {
-      // Long pause (>350ms) = human typing manually, reset scanner buffer
-      if (_barcodeBuffer.isNotEmpty && timeSinceLast > 350) {
+      // Long pause (>250ms) = human typing manually, reset scanner buffer
+      if (_barcodeBuffer.isNotEmpty && timeSinceLast > 250) {
         _barcodeBuffer.clear();
       }
       _barcodeBuffer.write(char);
       _lastKeystroke = now;
+
+      // Scanners type very fast (<60ms per char). If >= 4 chars buffered rapidly,
+      // start a completion timer in case scanner emits no Enter suffix.
+      _scanCompletionTimer?.cancel();
+      if (_barcodeBuffer.length >= 4 && timeSinceLast <= 65) {
+        _scanCompletionTimer = Timer(const Duration(milliseconds: 95), () {
+          if (!mounted) return;
+          final candidate = _barcodeBuffer.toString().trim();
+          if (candidate.length >= 4) {
+            _barcodeBuffer.clear();
+            _lastKeystroke = null;
+            _enqueueBarcodeScan(candidate);
+          }
+        });
+      }
     }
 
     return false;
@@ -505,26 +526,47 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
   }
 
   Future<void> _handleBarcodeScan(String raw) async {
+    _enqueueBarcodeScan(raw);
+  }
+
+  void _enqueueBarcodeScan(String raw) {
     final clean = raw.trim();
     if (clean.isEmpty) return;
 
     final now = DateTime.now();
-    // Debounce duplicate events (e.g. KeyDownEvent AND onSubmitted firing within 250ms for the same scan)
+    // Debounce duplicate event triggers within 150ms (e.g. KeyDownEvent AND onSubmitted firing for the exact same physical Enter)
     if (_lastScanHandledValue == clean &&
         _lastScanHandledTime != null &&
-        now.difference(_lastScanHandledTime!).inMilliseconds < 250) {
+        now.difference(_lastScanHandledTime!).inMilliseconds < 150) {
       return;
     }
 
-    if (_isProcessingScan) return;
-    _isProcessingScan = true;
     _lastScanHandledValue = clean;
     _lastScanHandledTime = now;
 
+    // Immediately clear search text and query so UI doesn't remain filtered to barcode
+    if (mounted) {
+      if (_searchController.text.isNotEmpty) {
+        _searchController.clear();
+        setState(() => _searchQuery = '');
+      }
+    }
+
+    _scanQueue.add(clean);
+    _processScanQueue();
+  }
+
+  Future<void> _processScanQueue() async {
+    if (_isProcessingQueue) return;
+    _isProcessingQueue = true;
+
     try {
-      await _processBarcode(clean);
+      while (_scanQueue.isNotEmpty) {
+        final barcode = _scanQueue.removeAt(0);
+        await _processBarcode(barcode);
+      }
     } finally {
-      _isProcessingScan = false;
+      _isProcessingQueue = false;
       _barcodeBuffer.clear();
       _lastKeystroke = null;
       if (mounted) {
@@ -538,86 +580,20 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
   }
 
   Future<void> _processBarcode(String barcode) async {
-    final clean = barcode.trim();
-    if (clean.isEmpty) return;
+    final result = await PosBarcodeService.instance.processBarcodeScan(
+      barcode: barcode,
+      ref: ref,
+      playSound: true,
+    );
 
-    Product? foundProduct;
-    ProductBatch? foundBatch;
-
-    // 1. Try finding via database findByBarcode (handles batch barcodes, base barcodes, and lookup table)
-    final lookup = await DatabaseService.instance.findByBarcode(clean);
-    if (lookup != null && lookup['product'] != null) {
-      foundProduct = lookup['product'] as Product;
-      foundBatch = lookup['batch'] as ProductBatch?;
-    }
-
-    // 2. Try in-memory products list if not found in database lookup
-    if (foundProduct == null) {
-      final products = ref.read(productsProvider).valueOrNull ?? [];
-      for (final p in products) {
-        if (p.baseBarcode?.trim() == clean) {
-          foundProduct = p;
-          break;
-        }
-        if (p.batches != null) {
-          for (final b in p.batches!) {
-            if (b.barcode?.trim() == clean) {
-              foundProduct = p;
-              foundBatch = b;
-              break;
-            }
-          }
-          if (foundProduct != null) break;
-        }
-      }
-
-      // Search by ID if purely numeric
-      if (foundProduct == null) {
-        final id = int.tryParse(clean);
-        if (id != null) {
-          for (final p in products) {
-            if (p.id == id) {
-              foundProduct = p;
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    if (foundProduct != null) {
-      final p = foundProduct;
-      // In POS desktop barcode scanning, immediately add 1 unit or pack to cart without blocking dialogs
-      final sellingMode = (p.allowPack && !p.allowLoose) || (p.allowPack && p.packPrice != null && p.packPrice! > 0)
-          ? 'pack'
-          : (p.isVariableQuantity ? 'weight' : 'piece');
-      final effectiveUnit = sellingMode == 'pack' ? (p.packUnit.isNotEmpty ? p.packUnit : 'pack') : p.baseUnit;
-      final customPrice = sellingMode == 'pack' ? p.packPrice : null;
-
-      ref.read(cartProvider.notifier).addProduct(
-        p,
-        quantity: 1.0,
-        unit: effectiveUnit,
-        sellingMode: sellingMode,
-        packSize: sellingMode == 'pack' ? p.packSize : null,
-        packSizeUnit: sellingMode == 'pack' ? p.packSizeUnit : null,
-        customPrice: customPrice,
-        batch: foundBatch,
-      );
-
-      // Play click sound for immediate POS audible feedback
-      SystemSound.play(SystemSoundType.click);
-
-      final priceDisplay = Formatters.currency(customPrice ?? p.price);
-      _showBarcodeSnack('✓ ${p.sinhalaOrName} added ($priceDisplay)');
+    if (result.isSuccess) {
+      _showBarcodeSnack(result.message);
     } else {
-      // Product not found: play alert sound and display warning
-      SystemSound.play(SystemSoundType.alert);
       _showBarcodeSnack(
-        '⚠ Product not found: $clean',
+        '⚠ Product not found: ${result.barcode}',
         isError: true,
         actionLabel: '+ Register Product',
-        onAction: () => _openAddProduct(initialBarcode: clean),
+        onAction: () => _openAddProduct(initialBarcode: result.barcode),
       );
     }
   }
@@ -1272,13 +1248,15 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                         ),
                       ],
                     ),
-                    child: TextField(
+                    child: SinglishTextField(
                       controller: _searchController,
                       focusNode: _searchFocusNode,
+                      showSuggestionBanner: false,
                       autofocus: true,
                       textInputAction: TextInputAction.go,
                       onSubmitted: (v) => _handleBarcodeScan(v),
                       onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                      onConverted: () => setState(() => _searchQuery = _searchController.text.trim()),
                       style: GoogleFonts.notoSansSinhala(color: textColor, fontSize: 13.5),
                       decoration: InputDecoration(
                         hintText: l10n.searchHint,

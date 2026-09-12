@@ -76,8 +76,11 @@ class PrintingService {
     }
   }
 
-  /// Checks if any receipt content contains Sinhala characters requiring raster rendering.
+  /// Checks if any receipt content contains Sinhala characters or non-English typography requiring raster rendering.
   bool containsSinhala(Sale sale, List<SaleItem> items, AppSettings settings) {
+    // If receipt language is Sinhala, Tamil, or Bilingual, raster rendering is required for thermal printers
+    if (settings.receiptLanguage != 'en') return true;
+    if (settings.receiptTemplate == 'sri_lankan_retail') return true;
     if (SinhalaSearchService.isSinhala(settings.shopName)) return true;
     if (SinhalaSearchService.isSinhala(settings.shopAddress)) return true;
     if (SinhalaSearchService.isSinhala(settings.receiptFooter)) return true;

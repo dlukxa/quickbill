@@ -8,13 +8,27 @@ import '../../models/supplier.dart';
 import '../../providers/supplier_provider.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/animate_in.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import 'add_supplier_screen.dart';
 
-class SupplierListScreen extends ConsumerWidget {
+class SupplierListScreen extends ConsumerStatefulWidget {
   const SupplierListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SupplierListScreen> createState() => _SupplierListScreenState();
+}
+
+class _SupplierListScreenState extends ConsumerState<SupplierListScreen> {
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final suppliersAsync = ref.watch(suppliersProvider);
     final filteredSuppliers = ref.watch(filteredSuppliersProvider);
 
@@ -41,8 +55,11 @@ class SupplierListScreen extends ConsumerWidget {
                 ],
                 border: Border.all(color: context.borderColor.withValues(alpha: 0.5)),
               ),
-              child: TextField(
+              child: SinglishTextField(
+                controller: _searchController,
+                showSuggestionBanner: false,
                 onChanged: (v) => ref.read(supplierSearchProvider.notifier).state = v,
+                onConverted: () => ref.read(supplierSearchProvider.notifier).state = _searchController.text,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 15,
                   color: context.onSurface,

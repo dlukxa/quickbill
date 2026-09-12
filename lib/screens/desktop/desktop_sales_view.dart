@@ -11,6 +11,7 @@ import '../../services/database_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/printing_service.dart';
 import '../../utils/formatters.dart';
+import '../../utils/pos_l10n.dart';
 import '../returns/process_return_screen.dart';
 
 class DesktopSalesView extends ConsumerStatefulWidget {
@@ -63,6 +64,7 @@ class _DesktopSalesViewState extends ConsumerState<DesktopSalesView> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
     final isDark = settings.isDarkMode;
     final salesAsync = ref.watch(salesProvider);
 
@@ -136,7 +138,7 @@ class _DesktopSalesViewState extends ConsumerState<DesktopSalesView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Sales History & Invoice Explorer',
+                          posL10n.invoicesAndSalesTitle,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
@@ -145,7 +147,7 @@ class _DesktopSalesViewState extends ConsumerState<DesktopSalesView> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Inspect past transactions, reprint thermal receipts, print A4 invoices, and issue returns',
+                          posL10n.salesSubtitle,
                           style: GoogleFonts.inter(fontSize: 13, color: textSecondary),
                         ),
                       ],
@@ -191,7 +193,7 @@ class _DesktopSalesViewState extends ConsumerState<DesktopSalesView> {
                           controller: _searchController,
                           onChanged: (val) => setState(() => _searchQuery = val),
                           decoration: InputDecoration(
-                            hintText: 'Search bill #, customer, or cashier...',
+                            hintText: posL10n.searchSalesHint,
                             prefixIcon: const Icon(Icons.search_rounded, size: 18),
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -208,17 +210,17 @@ class _DesktopSalesViewState extends ConsumerState<DesktopSalesView> {
                           value: _datePreset,
                           isDense: true,
                           decoration: InputDecoration(
-                            labelText: 'Time Period',
+                            labelText: posL10n.dateTimeCol,
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                           ),
-                          items: const [
-                            DropdownMenuItem(value: 'today', child: Text('Today')),
-                            DropdownMenuItem(value: 'yesterday', child: Text('Yesterday')),
-                            DropdownMenuItem(value: 'week', child: Text('This Week')),
-                            DropdownMenuItem(value: 'month', child: Text('This Month')),
-                            DropdownMenuItem(value: 'all', child: Text('All Time')),
+                          items: [
+                            DropdownMenuItem(value: 'today', child: Text(posL10n.today)),
+                            DropdownMenuItem(value: 'yesterday', child: Text(posL10n.yesterday)),
+                            DropdownMenuItem(value: 'week', child: Text(posL10n.thisWeek)),
+                            DropdownMenuItem(value: 'month', child: Text(posL10n.thisMonth)),
+                            DropdownMenuItem(value: 'all', child: Text(posL10n.allTime)),
                           ],
                           onChanged: (val) {
                             if (val != null) setState(() => _datePreset = val);
@@ -229,11 +231,11 @@ class _DesktopSalesViewState extends ConsumerState<DesktopSalesView> {
 
                       // Payment Method Filter
                       SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'all', label: Text('All')),
-                          ButtonSegment(value: 'cash', label: Text('Cash')),
-                          ButtonSegment(value: 'card', label: Text('Card')),
-                          ButtonSegment(value: 'credit', label: Text('Credit')),
+                        segments: [
+                          ButtonSegment(value: 'all', label: Text(posL10n.allMethods)),
+                          ButtonSegment(value: 'cash', label: Text(posL10n.cash)),
+                          ButtonSegment(value: 'card', label: Text(posL10n.card)),
+                          ButtonSegment(value: 'credit', label: Text(posL10n.creditPayment)),
                         ],
                         selected: {_paymentFilter},
                         onSelectionChanged: (set) => setState(() => _paymentFilter = set.first),
@@ -548,7 +550,7 @@ class _DesktopSalesViewState extends ConsumerState<DesktopSalesView> {
                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                           ),
                                           icon: const Icon(Icons.assignment_return_rounded, size: 16),
-                                          label: const Text('Return / Refund'),
+                                          label: Text(posL10n.processReturn),
                                           onPressed: () {
                                             Navigator.push(
                                               context,

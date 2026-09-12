@@ -16,6 +16,9 @@ import '../../services/pdf_service.dart';
 import '../../services/printing_service.dart';
 import '../../services/sync_service.dart';
 import '../../models/sale.dart';
+import '../../models/sale_item.dart';
+import '../../utils/pos_l10n.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 
 /// Comprehensive tabbed desktop settings view
 class DesktopSettingsView extends ConsumerStatefulWidget {
@@ -102,6 +105,8 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
     final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
@@ -127,7 +132,7 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                       const Icon(Icons.settings_suggest_rounded, color: AppTheme.primaryGreen, size: 28),
                       const SizedBox(width: 10),
                       Text(
-                        'Settings',
+                        posL10n.settingsTitle,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -142,12 +147,12 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                     children: [
-                      _buildNavItem(0, 'Store Profile', Icons.storefront_rounded),
-                      _buildNavItem(1, 'Printers & Hardware', Icons.print_rounded),
-                      _buildNavItem(2, 'Tax & Service Charges', Icons.percent_rounded),
-                      _buildNavItem(3, 'Business Modules', Icons.dashboard_customize_rounded),
-                      _buildNavItem(4, 'Cloud Sync & Data', Icons.cloud_sync_rounded),
-                      _buildNavItem(5, 'Staff & Permissions', Icons.badge_rounded),
+                      _buildNavItem(0, posL10n.storeProfileTab, Icons.storefront_rounded),
+                      _buildNavItem(1, posL10n.printersHardwareTab, Icons.print_rounded),
+                      _buildNavItem(2, posL10n.taxesChargesTab, Icons.percent_rounded),
+                      _buildNavItem(3, posL10n.businessModulesTab, Icons.dashboard_customize_rounded),
+                      _buildNavItem(4, posL10n.cloudSyncTab, Icons.cloud_sync_rounded),
+                      _buildNavItem(5, posL10n.staffPermissionsTab, Icons.badge_rounded),
                     ],
                   ),
                 ),
@@ -210,17 +215,36 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
   }
 
   // ==========================================
-  // TAB 0: STORE PROFILE
+  // TAB 0: STORE PROFILE & RECEIPT BRANDING
   // ==========================================
   Widget _buildStoreProfileTab(Color cardBg, Color borderColor, bool isDark) {
+    final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
+    final notifier = ref.read(settingsProvider.notifier);
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTabHeader('Store Profile & Receipt Branding', 'Business name, address and custom receipt footer message'),
+          _buildTabHeader(
+            posL10n.storeProfileTab,
+            posL10n.appInterfaceLanguageDesc,
+          ),
           const SizedBox(height: 24),
+
+          // 1. Business Info Card
           _buildCard(cardBg, borderColor, [
-            TextField(
+            Text(
+              'Store Information',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'This information appears at the top and bottom of customer receipts',
+              style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            SinglishTextField(
               controller: _shopNameCtrl,
               decoration: const InputDecoration(labelText: 'Store / Company Name', border: OutlineInputBorder()),
             ),
@@ -230,20 +254,19 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
               decoration: const InputDecoration(labelText: 'Store Phone Number', border: OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
-            TextField(
+            SinglishTextField(
               controller: _shopAddressCtrl,
               maxLines: 2,
               decoration: const InputDecoration(labelText: 'Business Address', border: OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
-            TextField(
+            SinglishTextField(
               controller: _receiptFooterCtrl,
               decoration: const InputDecoration(labelText: 'Receipt Footer Thank-You Message', border: OutlineInputBorder()),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: () async {
-                final notifier = ref.read(settingsProvider.notifier);
                 await notifier.updateShopName(_shopNameCtrl.text.trim());
                 await notifier.updateShopPhone(_shopPhoneCtrl.text.trim());
                 await notifier.updateShopAddress(_shopAddressCtrl.text.trim());
@@ -255,13 +278,381 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                 }
               },
               icon: const Icon(Icons.check_rounded, color: Colors.white),
-              label: const Text('Save Store Profile', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              label: Text(posL10n.saveChanges, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryGreen,
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
               ),
             ),
           ]),
+
+          const SizedBox(height: 24),
+
+          // 2. Receipt Design Template Card
+          _buildCard(cardBg, borderColor, [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Receipt Design Template',
+                      style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Choose the visual format for thermal printing and PDF receipts',
+                      style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
+                    ),
+                  ],
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _previewReceipt(settings),
+                  icon: const Icon(Icons.preview_rounded, size: 18),
+                  label: const Text('Live Preview'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDesktopTemplateCard(
+                    title: 'Template 2 — Sri Lankan Retail POS',
+                    subtitle: 'Itemized superstore receipt layout with standard price, our price, customer savings & localized labels.',
+                    badgeText: 'POPULAR / DEFAULT',
+                    badgeColor: AppTheme.primaryGreen,
+                    isSelected: settings.receiptTemplate == 'sri_lankan_retail',
+                    onTap: () => notifier.updateReceiptTemplate('sri_lankan_retail'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildDesktopTemplateCard(
+                    title: 'Template 1 — QuickBill Classic',
+                    subtitle: 'Compact 4-column POS slip (ITEM, QTY, PRICE, TOTAL) with prominent boxed totals.',
+                    badgeText: 'CLASSIC',
+                    badgeColor: Colors.blueGrey,
+                    isSelected: settings.receiptTemplate == 'classic',
+                    onTap: () => notifier.updateReceiptTemplate('classic'),
+                  ),
+                ),
+              ],
+            ),
+          ]),
+
+          const SizedBox(height: 24),
+
+          // 3. Language & Paper Size Card
+          _buildCard(cardBg, borderColor, [
+            Text(
+              posL10n.appInterfaceLanguage,
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              posL10n.appInterfaceLanguageDesc,
+              style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                // App UI Language
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.language_rounded, size: 18, color: AppTheme.primaryGreen),
+                          const SizedBox(width: 6),
+                          Text(posL10n.appInterfaceLanguage, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: settings.languageCode,
+                        decoration: const InputDecoration(border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: 'en', child: Text('English (English)')),
+                          DropdownMenuItem(value: 'si', child: Text('සිංහල (Sinhala)')),
+                          DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)')),
+                          DropdownMenuItem(value: 'hi', child: Text('हिन्दी (Hindi)')),
+                          DropdownMenuItem(value: 'bn', child: Text('বাংলা (Bengali)')),
+                          DropdownMenuItem(value: 'dv', child: Text('ދިވެހި (Dhivehi)')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) notifier.updateLanguage(val);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // Receipt Language
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.receipt_long_rounded, size: 18, color: Colors.blue),
+                          const SizedBox(width: 6),
+                          Text(posL10n.receiptLanguageTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: settings.receiptLanguage,
+                        decoration: const InputDecoration(border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: 'si', child: Text('සිංහල (Sinhala) — Default')),
+                          DropdownMenuItem(value: 'en', child: Text('English')),
+                          DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)')),
+                          DropdownMenuItem(value: 'bilingual', child: Text('ද්විභාෂා (Bilingual - Sinhala + English)')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) notifier.updateReceiptLanguage(val);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+
+                // Paper Size
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.print_outlined, size: 18, color: Colors.orange),
+                          const SizedBox(width: 6),
+                          Text(posL10n.paperSizeTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<String>(
+                        value: settings.printerPaperSize,
+                        decoration: const InputDecoration(border: OutlineInputBorder()),
+                        items: const [
+                          DropdownMenuItem(value: '80mm', child: Text('80mm (Standard POS)')),
+                          DropdownMenuItem(value: '58mm', child: Text('58mm (Mobile Roll)')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) notifier.updatePrinterPaperSize(val);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ]),
+
+          const SizedBox(height: 24),
+
+          // 4. Field Visibility Switches Card
+          _buildCard(cardBg, borderColor, [
+            Text(
+              'Visible Receipt Fields',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Show or hide specific fields to match your retail business requirements',
+              style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 24,
+              runSpacing: 8,
+              children: [
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Store Logo'),
+                    subtitle: const Text('Print store logo at top of receipt'),
+                    value: settings.showReceiptLogo,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showLogo: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('1D Barcode'),
+                    subtitle: const Text('Print Code128 barcode at bottom'),
+                    value: settings.showReceiptBarcode,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showBarcode: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Standard Price (සදාන් මිල)'),
+                    subtitle: const Text('Show original / gross item price'),
+                    value: settings.showReceiptStandardPrice,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showStandardPrice: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Our Price (අපේ මිල)'),
+                    subtitle: const Text('Show discounted sale price'),
+                    value: settings.showReceiptOurPrice,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showOurPrice: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Customer Savings (ලාභය)'),
+                    subtitle: const Text('Display customer profit / savings'),
+                    value: settings.showReceiptDiscount,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showDiscount: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Tax (VAT) Breakdown'),
+                    subtitle: const Text('Show tax breakdown when applicable'),
+                    value: settings.showReceiptTax,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showTax: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Payment & Change Details'),
+                    subtitle: const Text('Show cash received & change returned'),
+                    value: settings.showReceiptPaymentDetails,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showPaymentDetails: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Cashier Name'),
+                    subtitle: const Text('Show cashier / operator name on slip'),
+                    value: settings.showReceiptCashier,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showCashier: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Customer Details'),
+                    subtitle: const Text('Show customer name and telephone'),
+                    value: settings.showReceiptCustomer,
+                    activeThumbColor: AppTheme.primaryGreen,
+                    onChanged: (val) => notifier.updateReceiptToggles(showCustomer: val),
+                  ),
+                ),
+              ],
+            ),
+          ]),
+
+          const SizedBox(height: 24),
+
+          // 5. Sensitive Merchant Internal Margins Card
+          _buildCard(cardBg, borderColor, [
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.amber.shade300),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.shield_outlined, color: Colors.amber.shade900, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Sensitive Merchant Margins: Keep disabled for customer receipts. Only enable for internal back-office audit slips.',
+                      style: TextStyle(fontSize: 13, color: Colors.amber.shade900, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Wrap(
+              spacing: 24,
+              children: [
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Show Cost Price (ගැනුම් මිල)'),
+                    subtitle: const Text('Print product cost price per item'),
+                    value: settings.showReceiptCostPrice,
+                    activeThumbColor: Colors.amber.shade800,
+                    onChanged: (val) => notifier.updateReceiptToggles(showCostPrice: val),
+                  ),
+                ),
+                SizedBox(
+                  width: 320,
+                  child: SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Show Business Profit (ව්‍යාපාරික ලාභය)'),
+                    subtitle: const Text('Print business margin on receipt'),
+                    value: settings.showReceiptProfit,
+                    activeThumbColor: Colors.amber.shade800,
+                    onChanged: (val) => notifier.updateReceiptToggles(showProfit: val),
+                  ),
+                ),
+              ],
+            ),
+          ]),
+
+          const SizedBox(height: 24),
+
+          // 6. Test Print Button
+          ElevatedButton.icon(
+            onPressed: () => _previewReceipt(settings),
+            icon: const Icon(Icons.print_rounded, color: Colors.white),
+            label: const Text('Preview & Test Print Receipt', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(height: 40),
         ],
       ),
     );
@@ -416,14 +807,36 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                         }
                       } else {
                         final testSale = Sale(
-                          billNumber: 'TEST-001',
-                          total: 1000.0,
-                          discount: 0.0,
+                          billNumber: 'INV000001',
+                          total: 145.0,
+                          discount: 5.0,
                           itemsCount: 1,
                           paymentMethod: 'cash',
+                          cashierName: 'Harshana',
+                          customerName: 'Kusal Mendis',
+                          customerPhone: '077 123 4567',
                           createdAt: DateTime.now(),
+                          notes: 'Cash: 200.00\nChange: 55.00',
                         );
-                        final doc = await PdfService.instance.buildReceiptDocument(testSale, [], settings: settings);
+                        final sampleItems = [
+                          SaleItem(
+                            saleId: 0,
+                            productId: 0,
+                            productName: 'කිරි තේ (Milk Tea)',
+                            quantity: 1,
+                            unitPrice: 150.0,
+                            costPrice: 85.0,
+                            discount: 5.0,
+                            total: 145.0,
+                          ),
+                        ];
+                        final doc = await PdfService.instance.buildReceiptDocument(
+                          testSale,
+                          sampleItems,
+                          settings: settings,
+                          cashReceived: 200.0,
+                          change: 55.0,
+                        );
                         await Printing.layoutPdf(onLayout: (_) => doc.save(), name: 'Test-Receipt');
                       }
                     } catch (e) {
@@ -835,7 +1248,7 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Staff Name', border: OutlineInputBorder())),
+                SinglishTextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Staff Name', border: OutlineInputBorder())),
                 const SizedBox(height: 14),
                 TextField(
                   controller: pinCtrl,
@@ -947,6 +1360,128 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: children,
+      ),
+    );
+  }
+
+  Future<void> _previewReceipt(AppSettings settings) async {
+    final sampleSale = Sale(
+      billNumber: 'INV000001',
+      total: 145.0,
+      discount: 5.0,
+      itemsCount: 1,
+      paymentMethod: 'cash',
+      cashierName: 'Harshana',
+      customerName: 'Kusal Mendis',
+      customerPhone: '077 123 4567',
+      createdAt: DateTime.now(),
+      notes: 'Cash: 200.00\nChange: 55.00',
+    );
+
+    final sampleItems = [
+      SaleItem(
+        saleId: 0,
+        productId: 0,
+        productName: 'කිරි තේ (Milk Tea)',
+        quantity: 1,
+        unitPrice: 150.0,
+        costPrice: 85.0,
+        discount: 5.0,
+        total: 145.0,
+      ),
+    ];
+
+    try {
+      final doc = await PdfService.instance.buildReceiptDocument(
+        sampleSale,
+        sampleItems,
+        settings: settings,
+        cashReceived: 200.0,
+        change: 55.0,
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (format) async => doc.save(),
+        name: 'QuickBill_Receipt_Preview',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Preview error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Widget _buildDesktopTemplateCard({
+    required String title,
+    required String subtitle,
+    required String badgeText,
+    required Color badgeColor,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryGreen.withValues(alpha: 0.08) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryGreen : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: isSelected ? AppTheme.primaryGreen : Colors.grey,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isSelected ? AppTheme.primaryGreen : null,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: badgeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 28),
+              child: Text(
+                subtitle,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../../providers/supplier_provider.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/animate_in.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../utils/category_constants.dart';
 import '../../utils/category_icon_util.dart';
@@ -186,8 +187,9 @@ class _AddSupplierScreenState extends ConsumerState<AddSupplierScreen> {
                       const SizedBox(height: 12),
 
                       // Search box for categories
-                      TextFormField(
+                      SinglishTextFormField(
                         controller: _categorySearchController,
+                        showSuggestionBanner: false,
                         decoration: InputDecoration(
                           hintText: 'Search categories...',
                           prefixIcon: const Icon(Icons.search, size: 20),
@@ -207,6 +209,9 @@ class _AddSupplierScreenState extends ConsumerState<AddSupplierScreen> {
                           ),
                         ),
                         onChanged: (val) {
+                          setState(() {});
+                        },
+                        onConverted: () {
                           setState(() {});
                         },
                       ),
@@ -440,7 +445,20 @@ class _AddSupplierScreenState extends ConsumerState<AddSupplierScreen> {
     TextInputType? keyboardType,
     int maxLines = 1,
   }) {
-    return TextFormField(
+    if (keyboardType == TextInputType.phone || keyboardType == TextInputType.number) {
+      return TextFormField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, size: 20),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        validator: validator,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+      );
+    }
+    return SinglishTextFormField(
       controller: controller,
       decoration: InputDecoration(
         labelText: label,

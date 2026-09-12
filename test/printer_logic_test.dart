@@ -66,6 +66,22 @@ void main() {
   });
 
   group('PrintingService Contains Sinhala Detection Tests', () {
+    final asciiSettings = AppSettings(
+      shopName: 'QuickBill Super',
+      shopAddress: 'No. 12, Main Street',
+      shopPhone: '0112345678',
+      lowStockThreshold: 10,
+      receiptFooter: 'Thank you for shopping!',
+      languageCode: 'en',
+      regionCode: 'LK',
+      businessType: 'Retail',
+      isSetupComplete: true,
+      autoSync: false,
+      entityCode: '1',
+      receiptLanguage: 'en',
+      receiptTemplate: 'classic',
+    );
+
     final defaultSettings = AppSettings(
       shopName: 'QuickBill Super',
       shopAddress: 'No. 12, Main Street',
@@ -80,7 +96,7 @@ void main() {
       entityCode: '1',
     );
 
-    final sinhalaShopSettings = defaultSettings.copyWith(
+    final sinhalaShopSettings = asciiSettings.copyWith(
       shopName: 'සිරිලක වෙළඳසැල',
     );
 
@@ -102,13 +118,18 @@ void main() {
       SaleItem(saleId: 1, productId: 2, productName: 'කිරි තේ', quantity: 2, unitPrice: 150, costPrice: 80, total: 300),
     ];
 
-    test('Pure ASCII receipt returns false for containsSinhala', () {
-      final hasSinhala = PrintingService.instance.containsSinhala(asciiSale, asciiItems, defaultSettings);
+    test('Pure ASCII English Classic receipt returns false for containsSinhala', () {
+      final hasSinhala = PrintingService.instance.containsSinhala(asciiSale, asciiItems, asciiSettings);
       expect(hasSinhala, isFalse);
     });
 
+    test('Default Sri Lankan Retail / Sinhala settings returns true for containsSinhala to ensure rasterization', () {
+      final hasSinhala = PrintingService.instance.containsSinhala(asciiSale, asciiItems, defaultSettings);
+      expect(hasSinhala, isTrue);
+    });
+
     test('Sinhala product name triggers containsSinhala true', () {
-      final hasSinhala = PrintingService.instance.containsSinhala(asciiSale, sinhalaItems, defaultSettings);
+      final hasSinhala = PrintingService.instance.containsSinhala(asciiSale, sinhalaItems, asciiSettings);
       expect(hasSinhala, isTrue);
     });
 

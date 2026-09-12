@@ -12,10 +12,10 @@ class ScanService {
   Future<ScanResult> handleScan(String barcode) async {
     final now = DateTime.now();
 
-    // Duplicate guard: Ignore if same barcode within 2 seconds
+    // Duplicate guard: Prevent duplicate processing of the same camera frame within 400ms
     if (barcode == _lastBarcode && 
         _lastScanTime != null && 
-        now.difference(_lastScanTime!).inSeconds < 2) {
+        now.difference(_lastScanTime!).inMilliseconds < 400) {
       return ScanResult(
         status: ScanStatus.duplicate,
         message: '',

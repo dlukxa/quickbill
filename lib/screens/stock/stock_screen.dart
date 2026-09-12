@@ -23,6 +23,7 @@ import 'product_price_manager_screen.dart';
 import '../../utils/category_icon_util.dart';
 import '../../utils/category_constants.dart';
 import '../../widgets/cached_product_image.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import '../../services/sinhala_search_service.dart';
 import '../../widgets/add_stock_dialog.dart';
 
@@ -376,8 +377,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                         ),
                       ],
                     ),
-                    child: TextField(
+                    child: SinglishTextField(
                       controller: _searchController,
+                      showSuggestionBanner: false,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 14,
                         color: context.onSurface,

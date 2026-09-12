@@ -9,13 +9,13 @@ import '../../models/product.dart';
 import '../../models/purchase.dart';
 import '../../models/purchase_item.dart';
 import '../../models/supplier.dart';
+import '../../providers/preference_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../providers/purchase_provider.dart';
 import '../../providers/supplier_provider.dart';
-import '../../services/pdf_service.dart';
-import '../../services/printing_service.dart';
-import '../../utils/formatters.dart';
+import '../../utils/pos_l10n.dart';
 import '../../utils/region_utils.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import '../suppliers/add_supplier_screen.dart';
 
 /// Desktop Suppliers & Inward Stock (GRN) Management view
@@ -29,6 +29,7 @@ class DesktopSuppliersView extends ConsumerStatefulWidget {
 class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _poFilter = 'All'; // All, Pending, Received
+  final TextEditingController _searchCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -39,12 +40,15 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
   @override
   void dispose() {
     _tabController.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
     final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
@@ -53,7 +57,7 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
       backgroundColor: bg,
       body: Column(
         children: [
-          _buildHeader(cardBg, borderColor, isDark),
+          _buildHeader(cardBg, borderColor, isDark, posL10n),
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -68,7 +72,7 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
     );
   }
 
-  Widget _buildHeader(Color cardBg, Color borderColor, bool isDark) {
+  Widget _buildHeader(Color cardBg, Color borderColor, bool isDark, PosL10n posL10n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
@@ -77,13 +81,13 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
       ),
       child: Row(
         children: [
-          Icon(Icons.inventory_2_rounded, color: AppTheme.primaryBlue, size: 28),
+          const Icon(Icons.inventory_2_rounded, color: AppTheme.primaryBlue, size: 28),
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Suppliers & Purchases (GRN)',
+                posL10n.suppliersAndGrn,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -91,7 +95,7 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
                 ),
               ),
               Text(
-                'Vendor relations, goods received notes & supplier payables',
+                posL10n.suppliersSubtitle,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   color: isDark ? Colors.white60 : const Color(0xFF64748B),
@@ -117,9 +121,9 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
               labelColor: Colors.white,
               unselectedLabelColor: isDark ? Colors.white60 : Colors.black54,
               labelStyle: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 13),
-              tabs: const [
-                Tab(text: '  Suppliers Directory  '),
-                Tab(text: '  Purchase Orders / Inward Stock  '),
+              tabs: [
+                Tab(text: '  ${posL10n.supplierDirectory}  '),
+                Tab(text: '  ${posL10n.purchaseOrdersGrn}  '),
               ],
             ),
           ),
@@ -134,7 +138,7 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
             },
             icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
             label: Text(
-              _tabController.index == 0 ? 'New Supplier' : 'New Purchase (GRN)',
+              _tabController.index == 0 ? posL10n.newSupplier : posL10n.inwardStockGrn,
               style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: Colors.white),
             ),
             style: ElevatedButton.styleFrom(
@@ -169,8 +173,11 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
               Expanded(
                 child: SizedBox(
                   height: 40,
-                  child: TextField(
+                  child: SinglishTextField(
+                    controller: _searchCtrl,
+                    showSuggestionBanner: false,
                     onChanged: (v) => ref.read(supplierSearchProvider.notifier).state = v,
+                    onConverted: () => ref.read(supplierSearchProvider.notifier).state = _searchCtrl.text,
                     style: GoogleFonts.plusJakartaSans(fontSize: 14),
                     decoration: InputDecoration(
                       hintText: 'Search suppliers by name, phone, or provided items...',
@@ -718,7 +725,7 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
                     ),
                     const SizedBox(height: 12),
 
-                    TextField(
+                    SinglishTextField(
                       controller: notesController,
                       decoration: const InputDecoration(labelText: 'PO Notes / Reference', border: OutlineInputBorder()),
                     ),

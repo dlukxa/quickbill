@@ -6,6 +6,7 @@ import '../../models/service.dart';
 import '../../providers/service_provider.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/gradient_button.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../utils/region_utils.dart';
 
@@ -120,7 +121,7 @@ class _AddServiceScreenState extends ConsumerState<AddServiceScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
+                  SinglishTextFormField(
                     controller: _nameController,
                     decoration: InputDecoration(
                       labelText: '${localizations.serviceName} *',
@@ -130,7 +131,7 @@ class _AddServiceScreenState extends ConsumerState<AddServiceScreen> {
                     validator: (v) => v == null || v.trim().isEmpty ? localizations.required : null,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
+                  SinglishTextFormField(
                     controller: _categoryController,
                     decoration: InputDecoration(
                       labelText: localizations.category,

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
-import '../../config/theme.dart';
 import '../../providers/sale_provider.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_card.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import 'process_return_screen.dart';
 
 import '../../providers/employee_provider.dart';
@@ -58,8 +57,9 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: TextField(
+            child: SinglishTextField(
               controller: _searchController,
+              showSuggestionBanner: false,
               decoration: InputDecoration(
                 hintText: 'Search Invoice # or Customer',
                 prefixIcon: const Icon(Icons.search),
@@ -77,6 +77,7 @@ class _SalesHistoryScreenState extends ConsumerState<SalesHistoryScreen> {
                 ),
               ),
               onChanged: (val) => setState(() => _searchQuery = val),
+              onConverted: () => setState(() => _searchQuery = _searchController.text),
             ),
           ),
           Expanded(

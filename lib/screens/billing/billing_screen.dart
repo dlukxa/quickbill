@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:io';
+import 'dart:async';
 import 'package:flutter/services.dart';
+import '../../services/pos_barcode_service.dart';
 import '../../config/theme.dart';
 import '../../models/cart_item.dart';
 import '../../providers/cart_provider.dart';
@@ -29,8 +30,6 @@ import '../../providers/service_provider.dart';
 import '../../providers/business_modules_provider.dart';
 import '../../providers/appointment_provider.dart';
 import '../../providers/custom_order_provider.dart';
-import '../../models/custom_order.dart';
-import '../../models/appointment.dart';
 
 import 'quick_menu_settings_sheet.dart';
 import '../../generated/l10n/app_localizations.dart';
@@ -38,6 +37,7 @@ import '../../providers/multi_bill_provider.dart';
 import '../../widgets/variable_quantity_dialog.dart';
 import '../../widgets/cart_quantity_edit_dialog.dart';
 import '../../services/sinhala_search_service.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 
 class BillingScreen extends ConsumerStatefulWidget {
   const BillingScreen({super.key});
@@ -50,7 +50,30 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   String _searchQuery = '';
   String _searchMode = 'products'; // 'products' or 'services'
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
   bool _isQuickMenuExpanded = true;
+
+  // ─── Barcode Scanner (Keyboard Capture & Sequential Queue) ────────────────
+  // USB/BT HID scanners send keystrokes rapidly and finish with Enter/Tab.
+  // Sequential queue prevents dropped scans when multiple items are scanned quickly.
+  final StringBuffer _barcodeBuffer = StringBuffer();
+  DateTime? _lastKeystroke;
+  DateTime? _lastScanHandledTime;
+  String? _lastScanHandledValue;
+  Timer? _scanCompletionTimer;
+  final List<String> _scanQueue = [];
+  bool _isProcessingQueue = false;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocusNode.requestFocus();
+      }
+    });
+  }
 
 
   void _showOrderLoader(BuildContext context, WidgetRef ref) {
@@ -380,8 +403,205 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
 
   @override
   void dispose() {
+    _scanCompletionTimer?.cancel();
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+
+    // Do not process global POS scanner keystrokes if a modal/dialog or route is pushed on top
+    if (mounted && ModalRoute.of(context)?.isCurrent != true) {
+      return false;
+    }
+
+    final key = event.logicalKey;
+
+    // Enter or Tab = End of wired/USB/BT barcode scan (scanners send Enter, NumpadEnter, or Tab)
+    if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter ||
+        key == LogicalKeyboardKey.tab) {
+      _scanCompletionTimer?.cancel();
+      String candidate = _searchController.text.trim();
+      if (candidate.isEmpty) {
+        candidate = _barcodeBuffer.toString().trim();
+      }
+      _barcodeBuffer.clear();
+      _lastKeystroke = null;
+
+      if (candidate.isNotEmpty) {
+        _enqueueBarcodeScan(candidate);
+        return true; // consume event
+      }
+      return false;
+    }
+
+    final now = DateTime.now();
+    final timeSinceLast = _lastKeystroke != null
+        ? now.difference(_lastKeystroke!).inMilliseconds
+        : 0;
+
+    final char = _keyToChar(event);
+    if (char != null) {
+      // Long pause (>250ms) = human typing manually, reset scanner buffer
+      if (_barcodeBuffer.isNotEmpty && timeSinceLast > 250) {
+        _barcodeBuffer.clear();
+      }
+      _barcodeBuffer.write(char);
+      _lastKeystroke = now;
+
+      // Scanners type very fast (<60ms per char). If >= 4 chars buffered rapidly,
+      // start a completion timer in case scanner emits no Enter suffix.
+      _scanCompletionTimer?.cancel();
+      if (_barcodeBuffer.length >= 4 && timeSinceLast <= 65) {
+        _scanCompletionTimer = Timer(const Duration(milliseconds: 95), () {
+          if (!mounted) return;
+          final candidate = _barcodeBuffer.toString().trim();
+          if (candidate.length >= 4) {
+            _barcodeBuffer.clear();
+            _lastKeystroke = null;
+            _enqueueBarcodeScan(candidate);
+          }
+        });
+      }
+    }
+
+    return false;
+  }
+
+  String? _keyToChar(KeyEvent event) {
+    const validChars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_./+*#@';
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.numpad0) return '0';
+    if (key == LogicalKeyboardKey.numpad1) return '1';
+    if (key == LogicalKeyboardKey.numpad2) return '2';
+    if (key == LogicalKeyboardKey.numpad3) return '3';
+    if (key == LogicalKeyboardKey.numpad4) return '4';
+    if (key == LogicalKeyboardKey.numpad5) return '5';
+    if (key == LogicalKeyboardKey.numpad6) return '6';
+    if (key == LogicalKeyboardKey.numpad7) return '7';
+    if (key == LogicalKeyboardKey.numpad8) return '8';
+    if (key == LogicalKeyboardKey.numpad9) return '9';
+    if (key == LogicalKeyboardKey.numpadDecimal) return '.';
+    if (key == LogicalKeyboardKey.numpadSubtract) return '-';
+    if (key == LogicalKeyboardKey.numpadAdd) return '+';
+    if (key == LogicalKeyboardKey.numpadDivide) return '/';
+    if (key == LogicalKeyboardKey.numpadMultiply) return '*';
+
+    final char = event.character;
+    if (char != null && char.length == 1 && validChars.contains(char)) {
+      return char;
+    }
+
+    final label = key.keyLabel;
+    if (label.length == 1 && validChars.contains(label)) {
+      return label;
+    }
+    return null;
+  }
+
+  void _handleBarcodeScan(String raw) {
+    _enqueueBarcodeScan(raw);
+  }
+
+  void _enqueueBarcodeScan(String raw) {
+    final clean = raw.trim();
+    if (clean.isEmpty) return;
+
+    final now = DateTime.now();
+    if (_lastScanHandledValue == clean &&
+        _lastScanHandledTime != null &&
+        now.difference(_lastScanHandledTime!).inMilliseconds < 150) {
+      return;
+    }
+
+    _lastScanHandledValue = clean;
+    _lastScanHandledTime = now;
+
+    if (mounted) {
+      if (_searchController.text.isNotEmpty) {
+        _searchController.clear();
+        setState(() => _searchQuery = '');
+      }
+    }
+
+    _scanQueue.add(clean);
+    _processScanQueue();
+  }
+
+  Future<void> _processScanQueue() async {
+    if (_isProcessingQueue) return;
+    _isProcessingQueue = true;
+
+    try {
+      while (_scanQueue.isNotEmpty) {
+        final barcode = _scanQueue.removeAt(0);
+        await _processBarcode(barcode);
+      }
+    } finally {
+      _isProcessingQueue = false;
+      _barcodeBuffer.clear();
+      _lastKeystroke = null;
+      if (mounted) {
+        if (_searchController.text.isNotEmpty) {
+          _searchController.clear();
+          setState(() => _searchQuery = '');
+        }
+        _searchFocusNode.requestFocus();
+      }
+    }
+  }
+
+  Future<void> _processBarcode(String barcode) async {
+    final result = await PosBarcodeService.instance.processBarcodeScan(
+      barcode: barcode,
+      ref: ref,
+      playSound: true,
+    );
+
+    if (result.isSuccess) {
+      _showBarcodeSnack(result.message);
+    } else {
+      _showBarcodeSnack(
+        '⚠ Product not found: ${result.barcode}',
+        isError: true,
+      );
+    }
+  }
+
+  void _showBarcodeSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? AppTheme.errorRed : AppTheme.primaryGreen,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Widget _buildFallbackCategoryIcon(String? category, double size, double iconSize) {
@@ -795,9 +1015,15 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                     ],
                     border: Border.all(color: context.borderColor.withValues(alpha: 0.5)),
                   ),
-                  child: TextField(
+                  child: SinglishTextField(
                     controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    autofocus: true,
+                    textInputAction: TextInputAction.go,
+                    onSubmitted: (val) => _handleBarcodeScan(val),
+                    showSuggestionBanner: false,
                     onChanged: (val) => setState(() => _searchQuery = val),
+                    onConverted: () => setState(() => _searchQuery = _searchController.text),
                     style: GoogleFonts.plusJakartaSans(
                       fontSize: 14,
                       color: context.onSurface,

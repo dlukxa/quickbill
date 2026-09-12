@@ -52,6 +52,12 @@ class SinhalaTransliterationService {
     'elakiri': 'එළකිරි',
     'rathu hal': 'රතු හාල්',
     'sudu hal': 'සුදු හාල්',
+    'galle road': 'ගාලු පාර',
+    'galleroad': 'ගාලු පාර',
+    'light bill': 'ලයිට් බිල්',
+    'current bill': 'කරන්ට් බිල්',
+    'water bill': 'වතුර බිල්',
+    'kamal perera': 'කමල් පෙරේරා',
 
     // Core staple food & groceries
     'kiri': 'කිරි',
@@ -199,8 +205,44 @@ class SinhalaTransliterationService {
     'harpic': 'හාපික්',
     'lifebuoy': 'ලයිෆ්බෝයි',
     'signal': 'සිග්නල්',
-    'clogard': 'ක්ලෝගාඩ්',
     'special': 'ස්පෙෂල්',
+    
+    // Common Customer & Person Names
+    'kamal': 'කමල්',
+    'nimal': 'නිමල්',
+    'sunil': 'සුනිල්',
+    'perera': 'පෙරේරා',
+    'silva': 'සිල්වා',
+    'fernando': 'ප්‍රනාන්දු',
+    'kasun': 'කසුන්',
+    'nuwan': 'නුවන්',
+    'priyantha': 'ප්‍රියන්ත',
+    'bandara': 'බණ්ඩාර',
+    'chamara': 'චාමර',
+    'kumara': 'කුමාර',
+    'saman': 'සමන්',
+
+    // Locations & Addresses
+    'galle': 'ගාල්ල',
+    'colombo': 'කොළඹ',
+    'kandy': 'මහනුවර',
+    'road': 'පාර',
+    'paara': 'පාර',
+    'mawatha': 'මාවත',
+    'street': 'වීදිය',
+
+    // Expenses & Operations
+    'light': 'ලයිට්',
+    'bill': 'බිල්',
+    'rent': 'කුලිය',
+    'kuliya': 'කුලිය',
+    'salary': 'වැටුප්',
+    'watup': 'වැටුප්',
+    'transport': 'ප්‍රවාහන',
+    'cash': 'මුදල්',
+    'mudhal': 'මුදල්',
+    'mudala': 'මුදල',
+    'cheque': 'චෙක්පත්',
   };
 
   // ---------------------------------------------------------------------------

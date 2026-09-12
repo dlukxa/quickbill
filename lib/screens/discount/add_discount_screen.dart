@@ -8,8 +8,7 @@ import '../../providers/branch_provider.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../config/theme.dart';
 import '../../utils/formatters.dart';
-import '../../widgets/gradient_button.dart';
-import '../../widgets/app_card.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import '../../utils/region_utils.dart';
 import '../../utils/l10n_extensions.dart';
 
@@ -252,23 +251,32 @@ class _ProductSearchSheet extends ConsumerStatefulWidget {
 
 class _ProductSearchSheetState extends ConsumerState<_ProductSearchSheet> {
   String _query = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final branchId = ref.watch(currentBranchIdProvider);
     final productsAsync = ref.watch(searchProductsProvider(_query));
 
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: TextField(
+          child: SinglishTextField(
+            controller: _searchController,
+            showSuggestionBanner: false,
             decoration: InputDecoration(
               hintText: AppLocalizations.of(context)!.searchHint,
               prefixIcon: const Icon(Icons.search),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onChanged: (v) => setState(() => _query = v),
+            onConverted: () => setState(() => _query = _searchController.text),
           ),
         ),
         Expanded(

@@ -9,9 +9,9 @@ import '../../providers/product_provider.dart';
 import '../../services/database_service.dart';
 import '../../services/sinhala_search_service.dart';
 import '../../services/unit_conversion_service.dart';
-import '../../utils/region_utils.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/add_stock_dialog.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import 'add_product_screen.dart';
 
 /// Central Product, Price, Unit & Stock Management Screen.
@@ -394,8 +394,9 @@ class _ProductPriceManagerScreenState extends ConsumerState<ProductPriceManagerS
                   children: [
                     Expanded(
                       flex: 3,
-                      child: TextField(
+                      child: SinglishTextField(
                         controller: _searchController,
+                        showSuggestionBanner: false,
                         decoration: InputDecoration(
                           hintText: 'Search (Singlish: "sini", Sinhala: "සීනි", Barcode, English)...',
                           prefixIcon: const Icon(Icons.search_rounded),

@@ -10,6 +10,7 @@ import '../../utils/formatters.dart';
 import '../../utils/region_utils.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/animate_in.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import '../../services/sync_service.dart';
 import 'add_customer_screen.dart';
 import 'customer_detail_screen.dart';
@@ -25,11 +26,18 @@ class CustomerListScreen extends ConsumerStatefulWidget {
 
 class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
   bool _isSyncing = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncCustomers());
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _syncCustomers() async {
@@ -94,15 +102,18 @@ class _CustomerListScreenState extends ConsumerState<CustomerListScreen> {
                 ],
                 border: Border.all(color: context.borderColor.withValues(alpha: 0.5)),
               ),
-              child: TextField(
+              child: SinglishTextField(
+                controller: _searchController,
+                showSuggestionBanner: false,
                 onChanged: (val) => ref.read(customerSearchProvider.notifier).state = val,
+                onConverted: () => ref.read(customerSearchProvider.notifier).state = _searchController.text,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 15,
                   color: context.onSurface,
                   fontWeight: FontWeight.w500,
                 ),
                 decoration: InputDecoration(
-                  hintText: l10n?.searchCustomerHint ?? 'Search customers...',
+                  hintText: l10n.searchCustomerHint,
                   hintStyle: TextStyle(color: context.subText, fontSize: 15),
                   prefixIcon: Icon(Icons.search, color: context.subText, size: 20),
                   border: InputBorder.none,

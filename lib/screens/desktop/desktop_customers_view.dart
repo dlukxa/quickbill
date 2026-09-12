@@ -10,9 +10,11 @@ import '../../models/customer_payment.dart';
 import '../../models/sale.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/customer_insights_provider.dart';
+import '../../providers/preference_provider.dart';
 import '../../services/sync_service.dart';
-import '../../utils/formatters.dart';
+import '../../utils/pos_l10n.dart';
 import '../../utils/region_utils.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import '../customers/add_customer_screen.dart';
 
 /// Professional desktop customers view featuring:
@@ -31,6 +33,13 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
   Customer? _selectedCustomer;
   bool _onlyDebtors = false;
   bool _isSyncing = false;
+  final TextEditingController _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _syncCustomers() async {
     if (_isSyncing || !mounted) return;
@@ -49,6 +58,8 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
@@ -66,8 +77,8 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
             flex: _selectedCustomer != null ? 6 : 10,
             child: Column(
               children: [
-                _buildHeader(cardBg, borderColor, isDark),
-                _buildFilterBar(cardBg, borderColor, isDark, currentFilter),
+                _buildHeader(cardBg, borderColor, isDark, posL10n),
+                _buildFilterBar(cardBg, borderColor, isDark, currentFilter, posL10n),
                 Expanded(
                   child: insightsAsync.when(
                     data: (insights) {
@@ -84,7 +95,7 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
                               Icon(Icons.people_outline_rounded, size: 64, color: isDark ? Colors.white24 : Colors.black26),
                               const SizedBox(height: 16),
                               Text(
-                                'No customers found',
+                                posL10n.noProductsFound,
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
@@ -126,7 +137,7 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
     );
   }
 
-  Widget _buildHeader(Color cardBg, Color borderColor, bool isDark) {
+  Widget _buildHeader(Color cardBg, Color borderColor, bool isDark, PosL10n posL10n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
@@ -135,13 +146,13 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
       ),
       child: Row(
         children: [
-          Icon(Icons.people_alt_rounded, color: AppTheme.primaryGreen, size: 28),
+          const Icon(Icons.people_alt_rounded, color: AppTheme.primaryGreen, size: 28),
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Customers & Accounts',
+                posL10n.customersAndCredit,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -149,7 +160,7 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
                 ),
               ),
               Text(
-                'Customer directory, credit balances, purchase history & loyalty',
+                posL10n.customersSubtitle,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   color: isDark ? Colors.white60 : const Color(0xFF64748B),
@@ -170,7 +181,7 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
             onPressed: () => _openAddCustomerDialog(context),
             icon: const Icon(Icons.person_add_rounded, size: 18, color: Colors.white),
             label: Text(
-              'New Customer',
+              posL10n.newCustomer,
               style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: Colors.white),
             ),
             style: ElevatedButton.styleFrom(
@@ -184,7 +195,7 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
     );
   }
 
-  Widget _buildFilterBar(Color cardBg, Color borderColor, bool isDark, CustomerSegment? currentFilter) {
+  Widget _buildFilterBar(Color cardBg, Color borderColor, bool isDark, CustomerSegment? currentFilter, PosL10n posL10n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
@@ -199,11 +210,14 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
               Expanded(
                 child: SizedBox(
                   height: 42,
-                  child: TextField(
+                  child: SinglishTextField(
+                    controller: _searchCtrl,
+                    showSuggestionBanner: false,
                     onChanged: (val) => ref.read(customerSearchProvider.notifier).state = val,
+                    onConverted: () => ref.read(customerSearchProvider.notifier).state = _searchCtrl.text,
                     style: GoogleFonts.plusJakartaSans(fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: 'Search by customer name or phone number...',
+                      hintText: posL10n.searchCustomersHint,
                       hintStyle: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white38 : Colors.black38),
                       prefixIcon: const Icon(Icons.search, size: 20),
                       filled: true,
@@ -227,7 +241,7 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
               FilterChip(
                 selected: _onlyDebtors,
                 label: Text(
-                  'Has Debt / Credit',
+                  posL10n.debtors,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     fontWeight: _onlyDebtors ? FontWeight.bold : FontWeight.w500,
@@ -247,15 +261,15 @@ class _DesktopCustomersViewState extends ConsumerState<DesktopCustomersView> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildSegmentChip('All Customers', null, currentFilter == null),
+                _buildSegmentChip(posL10n.allCustomers, null, currentFilter == null),
                 const SizedBox(width: 8),
-                _buildSegmentChip('🏆 Champions', CustomerSegment.champion, currentFilter == CustomerSegment.champion),
+                _buildSegmentChip('🏆 ${posL10n.champions}', CustomerSegment.champion, currentFilter == CustomerSegment.champion),
                 const SizedBox(width: 8),
-                _buildSegmentChip('💎 Loyalists', CustomerSegment.loyalist, currentFilter == CustomerSegment.loyalist),
+                _buildSegmentChip('💎 ${posL10n.loyalists}', CustomerSegment.loyalist, currentFilter == CustomerSegment.loyalist),
                 const SizedBox(width: 8),
-                _buildSegmentChip('💰 Big Spenders', CustomerSegment.bigSpender, currentFilter == CustomerSegment.bigSpender),
+                _buildSegmentChip('💰 ${posL10n.bigSpenders}', CustomerSegment.bigSpender, currentFilter == CustomerSegment.bigSpender),
                 const SizedBox(width: 8),
-                _buildSegmentChip('⚠️ At Risk', CustomerSegment.atRisk, currentFilter == CustomerSegment.atRisk),
+                _buildSegmentChip('⚠️ ${posL10n.atRisk}', CustomerSegment.atRisk, currentFilter == CustomerSegment.atRisk),
                 const SizedBox(width: 8),
                 _buildSegmentChip('🌱 New', CustomerSegment.recent, currentFilter == CustomerSegment.recent),
                 const SizedBox(width: 8),
@@ -841,7 +855,7 @@ class _CustomerSideInspectorState extends ConsumerState<_CustomerSideInspector> 
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
+              SinglishTextField(
                 controller: noteController,
                 decoration: const InputDecoration(
                   labelText: 'Note (Optional, e.g. Cash, Bank Transfer)',

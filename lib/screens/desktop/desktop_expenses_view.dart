@@ -8,10 +8,11 @@ import '../../models/expense.dart';
 import '../../providers/branch_provider.dart';
 import '../../providers/employee_provider.dart';
 import '../../providers/expense_provider.dart';
-import '../../providers/report_provider.dart';
+import '../../providers/preference_provider.dart';
 import '../../providers/sale_provider.dart';
-import '../../utils/formatters.dart';
+import '../../utils/pos_l10n.dart';
 import '../../utils/region_utils.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 
 /// Professional desktop expense tracking & operating cost analytics view
 class DesktopExpensesView extends ConsumerStatefulWidget {
@@ -24,6 +25,13 @@ class DesktopExpensesView extends ConsumerStatefulWidget {
 class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
   String _selectedCategory = 'All';
   String _searchQuery = '';
+  final TextEditingController _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   final _categories = [
     'All',
@@ -45,6 +53,9 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
 
+    final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
+
     final expenseListAsync = ref.watch(expenseListProvider);
     final todayStatsAsync = ref.watch(todayStatsProvider);
 
@@ -52,9 +63,9 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
       backgroundColor: bg,
       body: Column(
         children: [
-          _buildHeader(cardBg, borderColor, isDark),
-          _buildMetricsBar(cardBg, borderColor, isDark, expenseListAsync.value ?? [], todayStatsAsync.value?['total_sales'] ?? 0.0),
-          _buildFilterBar(cardBg, borderColor, isDark),
+          _buildHeader(cardBg, borderColor, isDark, posL10n),
+          _buildMetricsBar(cardBg, borderColor, isDark, expenseListAsync.value ?? [], todayStatsAsync.value?['total_sales'] ?? 0.0, posL10n),
+          _buildFilterBar(cardBg, borderColor, isDark, posL10n),
           Expanded(
             child: expenseListAsync.when(
               data: (expenses) {
@@ -105,7 +116,7 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
     );
   }
 
-  Widget _buildHeader(Color cardBg, Color borderColor, bool isDark) {
+  Widget _buildHeader(Color cardBg, Color borderColor, bool isDark, PosL10n posL10n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: BoxDecoration(
@@ -120,7 +131,7 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Operating Expenses & Cash Out',
+                posL10n.expensesAndOperatingCosts,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -128,7 +139,7 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
                 ),
               ),
               Text(
-                'Track utilities, payroll, rent and petty cash disbursements',
+                posL10n.expensesSubtitle,
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   color: isDark ? Colors.white60 : const Color(0xFF64748B),
@@ -141,7 +152,7 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
             onPressed: () => _showAddExpenseDialog(context),
             icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
             label: Text(
-              'Log Expense',
+              posL10n.recordExpense,
               style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: Colors.white),
             ),
             style: ElevatedButton.styleFrom(
@@ -155,7 +166,7 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
     );
   }
 
-  Widget _buildMetricsBar(Color cardBg, Color borderColor, bool isDark, List<Expense> expenses, double todaySales) {
+  Widget _buildMetricsBar(Color cardBg, Color borderColor, bool isDark, List<Expense> expenses, double todaySales, PosL10n posL10n) {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final monthStart = DateTime(now.year, now.month, 1);
@@ -172,13 +183,13 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
       ),
       child: Row(
         children: [
-          _buildMetricCard('Today Expenses', todayExpenses, Colors.orange, Icons.trending_down_rounded, cardBg, borderColor, isDark),
+          _buildMetricCard(posL10n.todayExpenses, todayExpenses, Colors.orange, Icons.trending_down_rounded, cardBg, borderColor, isDark),
           const SizedBox(width: 16),
-          _buildMetricCard('This Month Total', monthExpenses, Colors.red, Icons.calendar_today_rounded, cardBg, borderColor, isDark),
+          _buildMetricCard(posL10n.thisMonthExpenses, monthExpenses, Colors.red, Icons.calendar_today_rounded, cardBg, borderColor, isDark),
           const SizedBox(width: 16),
-          _buildMetricCard('Today Net Cashflow', netToday, netToday >= 0 ? AppTheme.primaryGreen : AppTheme.errorRed, Icons.savings_rounded, cardBg, borderColor, isDark),
+          _buildMetricCard(posL10n.netProfit, netToday, netToday >= 0 ? AppTheme.primaryGreen : AppTheme.errorRed, Icons.savings_rounded, cardBg, borderColor, isDark),
           const SizedBox(width: 16),
-          _buildMetricCard('Today Sales', todaySales, AppTheme.primaryBlue, Icons.point_of_sale_rounded, cardBg, borderColor, isDark),
+          _buildMetricCard(posL10n.todaysRevenue, todaySales, AppTheme.primaryBlue, Icons.point_of_sale_rounded, cardBg, borderColor, isDark),
         ],
       ),
     );
@@ -230,7 +241,7 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
     );
   }
 
-  Widget _buildFilterBar(Color cardBg, Color borderColor, bool isDark) {
+  Widget _buildFilterBar(Color cardBg, Color borderColor, bool isDark, PosL10n posL10n) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
@@ -244,11 +255,14 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
               Expanded(
                 child: SizedBox(
                   height: 40,
-                  child: TextField(
+                  child: SinglishTextField(
+                    controller: _searchCtrl,
+                    showSuggestionBanner: false,
                     onChanged: (v) => setState(() => _searchQuery = v),
+                    onConverted: () => setState(() => _searchQuery = _searchCtrl.text),
                     style: GoogleFonts.plusJakartaSans(fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: 'Search expenses by note or category...',
+                      hintText: posL10n.searchExpensesHint,
                       hintStyle: GoogleFonts.plusJakartaSans(color: isDark ? Colors.white38 : Colors.black38),
                       prefixIcon: const Icon(Icons.search, size: 20),
                       filled: true,
@@ -463,7 +477,7 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                TextField(
+                SinglishTextField(
                   controller: noteController,
                   decoration: const InputDecoration(
                     labelText: 'Description / Payee Note',

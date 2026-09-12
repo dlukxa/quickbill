@@ -160,8 +160,8 @@ class _BillingScanScreenState extends ConsumerState<BillingScanScreen> {
       });
     }
 
-    // Delay slightly to prevent rapid multiple scans of same barcode
-    await Future.delayed(const Duration(seconds: 1));
+    // Delay slightly to prevent duplicate frame capture of same barcode
+    await Future.delayed(const Duration(milliseconds: 350));
     _isScanProcessing = false;
   }
 

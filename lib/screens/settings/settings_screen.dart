@@ -20,11 +20,15 @@ import '../../models/employee.dart';
 import '../../config/theme.dart';
 import '../../services/storage_service.dart';
 import '../../services/local_media_storage_service.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 import 'package:printing/printing.dart';
 import '../../services/cash_drawer_service.dart';
+import '../../services/pdf_service.dart';
+import '../../models/sale.dart';
+import '../../models/sale_item.dart';
 import '../../generated/l10n/app_localizations.dart';
 import 'bluetooth_scanner_settings_screen.dart' as bluetooth_scanner_settings_screen;
 import 'employee_list_screen.dart';
@@ -109,6 +113,22 @@ class SettingsScreen extends ConsumerWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const _DeviceSettingsPage()),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          AnimateIn(
+            delay: const Duration(milliseconds: 175),
+            child: _CategoryCard(
+              title: 'Receipt Settings & Templates',
+              subtitle: 'Sri Lankan Retail POS, Sinhala/Tamil/English & field toggles',
+              icon: Icons.receipt_long_rounded,
+              iconColor: Colors.deepOrange,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const _ReceiptSettingsPage()),
                 );
               },
             ),
@@ -866,17 +886,34 @@ class _PreferenceSettingsPage extends ConsumerWidget {
             _SectionHeader(title: AppLocalizations.of(context)!.receiptSettings),
             AppCard(
               padding: EdgeInsets.zero,
-              child: ListTile(
-                leading: const Icon(Icons.receipt_long),
-                title: Text(AppLocalizations.of(context)!.receiptFooter),
-                subtitle: Text(settings.receiptFooter),
-                trailing: const Icon(Icons.edit, size: 20),
-                onTap: () => _showEditDialog(
-                  context,
-                  AppLocalizations.of(context)!.editReceiptFooter,
-                  settings.receiptFooter,
-                  (val) => notifier.updateReceiptFooter(val),
-                ),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.receipt_long_rounded, color: Colors.deepOrange),
+                    title: const Text('Receipt Template & Language', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(settings.receiptTemplate == 'sri_lankan_retail'
+                        ? 'Sri Lankan Retail POS (${settings.receiptLanguage.toUpperCase()})'
+                        : 'QuickBill Classic (${settings.receiptLanguage.toUpperCase()})'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const _ReceiptSettingsPage()),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.edit_note_rounded),
+                    title: Text(AppLocalizations.of(context)!.receiptFooter),
+                    subtitle: Text(settings.receiptFooter),
+                    trailing: const Icon(Icons.edit, size: 20),
+                    onTap: () => _showEditDialog(
+                      context,
+                      AppLocalizations.of(context)!.editReceiptFooter,
+                      settings.receiptFooter,
+                      (val) => notifier.updateReceiptFooter(val),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1327,17 +1364,28 @@ void _showEditDialog(
   int maxLines = 1,
 }) {
   final controller = TextEditingController(text: initialValue);
+  final isNumeric = keyboardType == TextInputType.number ||
+      keyboardType == TextInputType.phone;
+
   showDialog(
     context: context,
     builder: (context) => AlertDialog(
       title: Text(title),
-      content: TextField(
-        controller: controller,
-        keyboardType: keyboardType,
-        maxLines: maxLines,
-        autofocus: true,
-        decoration: const InputDecoration(border: OutlineInputBorder()),
-      ),
+      content: isNumeric
+          ? TextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              maxLines: maxLines,
+              autofocus: true,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+            )
+          : SinglishTextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              maxLines: maxLines,
+              autofocus: true,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+            ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context), 
@@ -2037,3 +2085,394 @@ class _OfflineMediaStorageCardState extends ConsumerState<_OfflineMediaStorageCa
     );
   }
 }
+
+class _ReceiptSettingsPage extends ConsumerWidget {
+  const _ReceiptSettingsPage();
+
+  Future<void> _previewReceipt(BuildContext context, AppSettings settings) async {
+    final sampleSale = Sale(
+      billNumber: 'INV000001',
+      total: 145.0,
+      discount: 5.0,
+      itemsCount: 1,
+      paymentMethod: 'cash',
+      cashierName: 'Harshana',
+      customerName: 'Kusal Mendis',
+      customerPhone: '077 123 4567',
+      createdAt: DateTime.now(),
+      notes: 'Cash: 200.00\nChange: 55.00',
+    );
+
+    final sampleItems = [
+      SaleItem(
+        saleId: 0,
+        productId: 0,
+        productName: 'කිරි තේ (Milk Tea)',
+        quantity: 1,
+        unitPrice: 150.0,
+        costPrice: 85.0,
+        discount: 5.0,
+        total: 145.0,
+      ),
+    ];
+
+    try {
+      final doc = await PdfService.instance.buildReceiptDocument(
+        sampleSale,
+        sampleItems,
+        settings: settings,
+        cashReceived: 200.0,
+        change: 55.0,
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (format) async => doc.save(),
+        name: 'QuickBill_Receipt_Preview',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Preview error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    final notifier = ref.read(settingsProvider.notifier);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Receipt Settings & Templates'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.preview_rounded),
+            tooltip: 'Preview Receipt',
+            onPressed: () => _previewReceipt(context, settings),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // ─── 1. Template Selection ───
+          const _SectionHeader(title: 'Receipt Design Template'),
+          AppCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Choose the visual layout for thermal printing and PDF receipts.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                _buildTemplateTile(
+                  title: 'Template 2 — Sri Lankan Retail POS (Recommended)',
+                  subtitle: 'Itemized superstore receipt with standard price, our price, customer savings & Sinhala labels.',
+                  isSelected: settings.receiptTemplate == 'sri_lankan_retail',
+                  badgeText: 'POPULAR',
+                  badgeColor: AppTheme.primaryGreen,
+                  onTap: () => notifier.updateReceiptTemplate('sri_lankan_retail'),
+                ),
+                const SizedBox(height: 12),
+                _buildTemplateTile(
+                  title: 'Template 1 — QuickBill Classic',
+                  subtitle: 'Compact 4-column POS slip (ITEM, QTY, PRICE, TOTAL) with prominent total box.',
+                  isSelected: settings.receiptTemplate == 'classic',
+                  badgeText: 'CLASSIC',
+                  badgeColor: Colors.blueGrey,
+                  onTap: () => notifier.updateReceiptTemplate('classic'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ─── 2. Language Selection ───
+          const _SectionHeader(title: 'Receipt Language'),
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.translate_rounded, color: Colors.deepPurple),
+                  title: const Text('Language Output', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(_languageLabel(settings.receiptLanguage)),
+                  trailing: DropdownButton<String>(
+                    value: settings.receiptLanguage,
+                    underline: const SizedBox(),
+                    items: const [
+                      DropdownMenuItem(value: 'si', child: Text('සිංහල (Sinhala)')),
+                      DropdownMenuItem(value: 'en', child: Text('English')),
+                      DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)')),
+                      DropdownMenuItem(value: 'bilingual', child: Text('ද්විභාෂා (Bilingual)')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) notifier.updateReceiptLanguage(val);
+                    },
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.straighten_rounded, color: Colors.blue),
+                  title: const Text('Paper Size', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(settings.printerPaperSize == '58mm' ? '58mm (Compact Mobile)' : '80mm (Standard POS)'),
+                  trailing: DropdownButton<String>(
+                    value: settings.printerPaperSize,
+                    underline: const SizedBox(),
+                    items: const [
+                      DropdownMenuItem(value: '80mm', child: Text('80mm (Standard)')),
+                      DropdownMenuItem(value: '58mm', child: Text('58mm (Compact)')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) notifier.updatePrinterPaperSize(val);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ─── 3. Field Visibility Controls ───
+          const _SectionHeader(title: 'Visible Receipt Fields'),
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('Store Logo'),
+                  subtitle: const Text('Print store logo at the top of receipt'),
+                  value: settings.showReceiptLogo,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showLogo: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('1D Barcode'),
+                  subtitle: const Text('Print scannable Code128 barcode at the bottom'),
+                  value: settings.showReceiptBarcode,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showBarcode: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Standard Price (සදාන් මිල)'),
+                  subtitle: const Text('Show gross / original product selling price'),
+                  value: settings.showReceiptStandardPrice,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showStandardPrice: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Our Price (අපේ මිල)'),
+                  subtitle: const Text('Show actual selling price used for the transaction'),
+                  value: settings.showReceiptOurPrice,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showOurPrice: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Discount & Customer Savings (ලාභය)'),
+                  subtitle: const Text('Display customer profit / total savings breakdown'),
+                  value: settings.showReceiptDiscount,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showDiscount: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Tax (VAT)'),
+                  subtitle: const Text('Show tax breakdown when tax is greater than zero'),
+                  value: settings.showReceiptTax,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showTax: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Payment Details (ගෙවීම් / හුවමාරුව)'),
+                  subtitle: const Text('Show cash received, change, and remaining balance'),
+                  value: settings.showReceiptPaymentDetails,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showPaymentDetails: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Cashier Name'),
+                  subtitle: const Text('Show cashier / operator name on slip'),
+                  value: settings.showReceiptCashier,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showCashier: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Customer Details'),
+                  subtitle: const Text('Show customer name and telephone when attached'),
+                  value: settings.showReceiptCustomer,
+                  activeThumbColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showCustomer: val),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // ─── 4. Sensitive Internal Profit / Cost Section ───
+          const _SectionHeader(title: 'Sensitive Merchant Data (Internal Controls)'),
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.amber.shade300),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.shield_outlined, color: Colors.amber.shade900, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Sensitive internal data. Keep disabled on customer receipts unless used for internal audit slips.',
+                    style: TextStyle(fontSize: 12, color: Colors.amber.shade900, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('Show Cost Price (ගැනුම් මිල)'),
+                  subtitle: const Text('Print product cost price per item'),
+                  value: settings.showReceiptCostPrice,
+                  activeThumbColor: Colors.amber.shade800,
+                  onChanged: (val) => notifier.updateReceiptToggles(showCostPrice: val),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Show Business Profit (ව්‍යාපාරික ලාභය)'),
+                  subtitle: const Text('Print store revenue minus cost on receipt'),
+                  value: settings.showReceiptProfit,
+                  activeThumbColor: Colors.amber.shade800,
+                  onChanged: (val) => notifier.updateReceiptToggles(showProfit: val),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // ─── 5. Test Print Action ───
+          ElevatedButton.icon(
+            onPressed: () => _previewReceipt(context, settings),
+            icon: const Icon(Icons.print_rounded, color: Colors.white),
+            label: const Text('Preview & Test Print Receipt', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTemplateTile({
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+    required String badgeText,
+    required Color badgeColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryGreen.withValues(alpha: 0.08) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryGreen : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected ? AppTheme.primaryGreen : Colors.grey,
+              size: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: isSelected ? AppTheme.primaryGreen : null,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: badgeColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          badgeText,
+                          style: TextStyle(
+                            color: badgeColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _languageLabel(String code) {
+    switch (code) {
+      case 'si':
+        return 'සිංහල (Sinhala)';
+      case 'en':
+        return 'English';
+      case 'ta':
+        return 'தமிழ் (Tamil)';
+      case 'bilingual':
+        return 'ද්විභාෂා (Bilingual)';
+      default:
+        return code.toUpperCase();
+    }
+  }
+}
+

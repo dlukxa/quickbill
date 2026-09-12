@@ -7,6 +7,7 @@ import '../../providers/preference_provider.dart';
 import '../../providers/report_provider.dart';
 import '../../providers/sale_provider.dart';
 import '../../utils/formatters.dart';
+import '../../utils/pos_l10n.dart';
 import '../reports/analytics_dashboard_screen.dart';
 import '../reports/profit_loss_screen.dart';
 import '../reports/peak_hours_screen.dart';
@@ -21,6 +22,7 @@ class DesktopDashboardView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
     final isDark = settings.isDarkMode;
     final todayStatsAsync = ref.watch(todayStatsProvider);
     final topProductsAsync = ref.watch(topProductsProvider);
@@ -54,7 +56,7 @@ class DesktopDashboardView extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Store Dashboard & Performance',
+                        posL10n.storeDashboardTitle,
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -63,7 +65,7 @@ class DesktopDashboardView extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Live daily business summary, profitability, and sales activity',
+                        posL10n.dashboardSubtitle,
                         style: GoogleFonts.inter(fontSize: 13, color: textSecondary),
                       ),
                     ],
@@ -72,7 +74,7 @@ class DesktopDashboardView extends ConsumerWidget {
                     children: [
                       OutlinedButton.icon(
                         icon: const Icon(Icons.bar_chart_rounded, size: 16),
-                        label: const Text('All Reports'),
+                        label: Text(posL10n.allReports),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -85,7 +87,7 @@ class DesktopDashboardView extends ConsumerWidget {
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.point_of_sale_rounded, size: 16),
-                        label: const Text('Go to POS (F1)'),
+                        label: Text(posL10n.goToPos),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryGreen,
                           foregroundColor: Colors.white,
@@ -112,7 +114,7 @@ class DesktopDashboardView extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: _buildKpiCard(
-                          title: "TODAY'S REVENUE",
+                          title: posL10n.todaysRevenue,
                           value: Formatters.currency(totalRevenue),
                           icon: Icons.payments_rounded,
                           color: AppTheme.primaryGreen,
@@ -125,7 +127,7 @@ class DesktopDashboardView extends ConsumerWidget {
                       const SizedBox(width: 16),
                       Expanded(
                         child: _buildKpiCard(
-                          title: "TODAY'S PROFIT",
+                          title: posL10n.grossProfit,
                           value: Formatters.currency(totalProfit),
                           icon: Icons.trending_up_rounded,
                           color: AppTheme.primaryBlue,
@@ -138,7 +140,7 @@ class DesktopDashboardView extends ConsumerWidget {
                       const SizedBox(width: 16),
                       Expanded(
                         child: _buildKpiCard(
-                          title: "BILLS / INVOICES",
+                          title: posL10n.billsInvoices,
                           value: totalInvoices.toString(),
                           icon: Icons.receipt_rounded,
                           color: Colors.amber.shade700,
@@ -151,7 +153,7 @@ class DesktopDashboardView extends ConsumerWidget {
                       const SizedBox(width: 16),
                       Expanded(
                         child: _buildKpiCard(
-                          title: "AVERAGE TICKET",
+                          title: posL10n.averageTicket,
                           value: Formatters.currency(avgOrder),
                           icon: Icons.shopping_basket_rounded,
                           color: AppTheme.primaryPurple,
@@ -190,7 +192,7 @@ class DesktopDashboardView extends ConsumerWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                "Today's Transaction Flow",
+                                posL10n.hourlySalesVelocity,
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
@@ -314,7 +316,7 @@ class DesktopDashboardView extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Payment Methods Breakdown',
+                            posL10n.paymentMethodsBreakdown,
                             style: GoogleFonts.plusJakartaSans(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -350,11 +352,11 @@ class DesktopDashboardView extends ConsumerWidget {
 
                               return Column(
                                 children: [
-                                  _buildPaymentRow('Cash', cashTotal, grandTotal, AppTheme.primaryGreen, textPrimary, textSecondary),
+                                  _buildPaymentRow(posL10n.cash, cashTotal, grandTotal, AppTheme.primaryGreen, textPrimary, textSecondary),
                                   const SizedBox(height: 8),
-                                  _buildPaymentRow('Card', cardTotal, grandTotal, AppTheme.primaryBlue, textPrimary, textSecondary),
+                                  _buildPaymentRow(posL10n.card, cardTotal, grandTotal, AppTheme.primaryBlue, textPrimary, textSecondary),
                                   const SizedBox(height: 8),
-                                  _buildPaymentRow('Credit / Account', creditTotal, grandTotal, Colors.orange.shade700, textPrimary, textSecondary),
+                                  _buildPaymentRow(posL10n.credit, creditTotal, grandTotal, Colors.orange.shade700, textPrimary, textSecondary),
                                   if (otherTotal > 0) ...[
                                     const SizedBox(height: 8),
                                     _buildPaymentRow('Other / QR', otherTotal, grandTotal, AppTheme.primaryPurple, textPrimary, textSecondary),
@@ -411,7 +413,7 @@ class DesktopDashboardView extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Top-Selling Products',
+                          posL10n.topSellingProducts,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -420,7 +422,7 @@ class DesktopDashboardView extends ConsumerWidget {
                         ),
                         TextButton.icon(
                           icon: const Icon(Icons.inventory_2_rounded, size: 14),
-                          label: const Text('Manage Stock (F3)'),
+                          label: Text(posL10n.manageStock),
                           onPressed: () => onNavigateTo?.call(2),
                         ),
                       ],
@@ -451,9 +453,9 @@ class DesktopDashboardView extends ConsumerWidget {
                               ),
                               children: [
                                 Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: textSecondary, fontSize: 12))),
-                                Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('PRODUCT NAME', style: TextStyle(fontWeight: FontWeight.bold, color: textSecondary, fontSize: 12))),
-                                Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('QTY SOLD', textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, color: textSecondary, fontSize: 12))),
-                                Padding(padding: const EdgeInsets.only(bottom: 8), child: Text('TOTAL REVENUE', textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, color: textSecondary, fontSize: 12))),
+                                Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(posL10n.productCol, style: TextStyle(fontWeight: FontWeight.bold, color: textSecondary, fontSize: 12))),
+                                Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(posL10n.qtySoldCol, textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, color: textSecondary, fontSize: 12))),
+                                Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(posL10n.totalRevenueCol, textAlign: TextAlign.right, style: TextStyle(fontWeight: FontWeight.bold, color: textSecondary, fontSize: 12))),
                               ],
                             ),
                             ...items.asMap().entries.map((entry) {

@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../generated/l10n/app_localizations.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../../config/theme.dart';
 import '../../providers/expense_provider.dart';
-import '../../providers/report_provider.dart';
 import '../../providers/sale_provider.dart';
 import '../../models/expense.dart';
 import '../../utils/formatters.dart';
 import '../../utils/region_utils.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/animate_in.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 
 String getLocalizedExpenseCategory(BuildContext context, String category) {
   final l10n = AppLocalizations.of(context)!;
@@ -115,7 +114,7 @@ class ExpenseManagementScreen extends ConsumerWidget {
                   validator: (val) => val == null || val.isEmpty ? l10n.required : null,
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
+                SinglishTextFormField(
                   controller: noteController,
                   decoration: InputDecoration(
                     labelText: l10n.noteOptional,

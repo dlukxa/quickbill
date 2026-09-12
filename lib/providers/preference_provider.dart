@@ -30,6 +30,19 @@ class AppSettings {
   final bool autoOpenCashDrawerOnSaleComplete;
   final String cashDrawerTriggerType; // 'printer', 'com_port'
   final String cashDrawerComPort; // e.g. 'COM1'
+  final String receiptTemplate; // 'sri_lankan_retail', 'classic'
+  final String receiptLanguage; // 'si', 'en', 'ta', 'bilingual'
+  final bool showReceiptLogo;
+  final bool showReceiptBarcode;
+  final bool showReceiptStandardPrice;
+  final bool showReceiptOurPrice;
+  final bool showReceiptDiscount;
+  final bool showReceiptTax;
+  final bool showReceiptPaymentDetails;
+  final bool showReceiptCashier;
+  final bool showReceiptCustomer;
+  final bool showReceiptProfit; // Sensitive internal profit (default: false)
+  final bool showReceiptCostPrice; // Sensitive internal cost (default: false)
   final bool? _hasSelectedLanguage;
 
   bool get hasSelectedLanguage => _hasSelectedLanguage ?? false;
@@ -62,6 +75,19 @@ class AppSettings {
     this.autoOpenCashDrawerOnSaleComplete = true,
     this.cashDrawerTriggerType = 'printer',
     this.cashDrawerComPort = 'COM1',
+    this.receiptTemplate = 'sri_lankan_retail',
+    this.receiptLanguage = 'si',
+    this.showReceiptLogo = true,
+    this.showReceiptBarcode = true,
+    this.showReceiptStandardPrice = true,
+    this.showReceiptOurPrice = true,
+    this.showReceiptDiscount = true,
+    this.showReceiptTax = true,
+    this.showReceiptPaymentDetails = true,
+    this.showReceiptCashier = true,
+    this.showReceiptCustomer = true,
+    this.showReceiptProfit = false,
+    this.showReceiptCostPrice = false,
     bool? hasSelectedLanguage,
   }) : _hasSelectedLanguage = hasSelectedLanguage;
 
@@ -92,6 +118,19 @@ class AppSettings {
     bool? autoOpenCashDrawerOnSaleComplete,
     String? cashDrawerTriggerType,
     String? cashDrawerComPort,
+    String? receiptTemplate,
+    String? receiptLanguage,
+    bool? showReceiptLogo,
+    bool? showReceiptBarcode,
+    bool? showReceiptStandardPrice,
+    bool? showReceiptOurPrice,
+    bool? showReceiptDiscount,
+    bool? showReceiptTax,
+    bool? showReceiptPaymentDetails,
+    bool? showReceiptCashier,
+    bool? showReceiptCustomer,
+    bool? showReceiptProfit,
+    bool? showReceiptCostPrice,
     bool? hasSelectedLanguage,
   }) {
     return AppSettings(
@@ -121,6 +160,19 @@ class AppSettings {
       autoOpenCashDrawerOnSaleComplete: autoOpenCashDrawerOnSaleComplete ?? this.autoOpenCashDrawerOnSaleComplete,
       cashDrawerTriggerType: cashDrawerTriggerType ?? this.cashDrawerTriggerType,
       cashDrawerComPort: cashDrawerComPort ?? this.cashDrawerComPort,
+      receiptTemplate: receiptTemplate ?? this.receiptTemplate,
+      receiptLanguage: receiptLanguage ?? this.receiptLanguage,
+      showReceiptLogo: showReceiptLogo ?? this.showReceiptLogo,
+      showReceiptBarcode: showReceiptBarcode ?? this.showReceiptBarcode,
+      showReceiptStandardPrice: showReceiptStandardPrice ?? this.showReceiptStandardPrice,
+      showReceiptOurPrice: showReceiptOurPrice ?? this.showReceiptOurPrice,
+      showReceiptDiscount: showReceiptDiscount ?? this.showReceiptDiscount,
+      showReceiptTax: showReceiptTax ?? this.showReceiptTax,
+      showReceiptPaymentDetails: showReceiptPaymentDetails ?? this.showReceiptPaymentDetails,
+      showReceiptCashier: showReceiptCashier ?? this.showReceiptCashier,
+      showReceiptCustomer: showReceiptCustomer ?? this.showReceiptCustomer,
+      showReceiptProfit: showReceiptProfit ?? this.showReceiptProfit,
+      showReceiptCostPrice: showReceiptCostPrice ?? this.showReceiptCostPrice,
       hasSelectedLanguage: hasSelectedLanguage ?? _hasSelectedLanguage,
     );
   }
@@ -152,6 +204,19 @@ class AppSettings {
       'auto_open_cash_drawer_on_sale_complete': autoOpenCashDrawerOnSaleComplete,
       'cash_drawer_trigger_type': cashDrawerTriggerType,
       'cash_drawer_com_port': cashDrawerComPort,
+      'receipt_template': receiptTemplate,
+      'receipt_language': receiptLanguage,
+      'show_receipt_logo': showReceiptLogo,
+      'show_receipt_barcode': showReceiptBarcode,
+      'show_receipt_standard_price': showReceiptStandardPrice,
+      'show_receipt_our_price': showReceiptOurPrice,
+      'show_receipt_discount': showReceiptDiscount,
+      'show_receipt_tax': showReceiptTax,
+      'show_receipt_payment_details': showReceiptPaymentDetails,
+      'show_receipt_cashier': showReceiptCashier,
+      'show_receipt_customer': showReceiptCustomer,
+      'show_receipt_profit': showReceiptProfit,
+      'show_receipt_cost_price': showReceiptCostPrice,
       'has_selected_language': hasSelectedLanguage,
       'updated_at': DateTime.now().toIso8601String(),
     };
@@ -186,6 +251,19 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   static const String _keyAutoOpenCashDrawerOnSaleComplete = 'auto_open_cash_drawer_on_sale_complete';
   static const String _keyCashDrawerTriggerType = 'cash_drawer_trigger_type';
   static const String _keyCashDrawerComPort = 'cash_drawer_com_port';
+  static const String _keyReceiptTemplate = 'receipt_template';
+  static const String _keyReceiptLanguage = 'receipt_language';
+  static const String _keyShowReceiptLogo = 'show_receipt_logo';
+  static const String _keyShowReceiptBarcode = 'show_receipt_barcode';
+  static const String _keyShowReceiptStandardPrice = 'show_receipt_standard_price';
+  static const String _keyShowReceiptOurPrice = 'show_receipt_our_price';
+  static const String _keyShowReceiptDiscount = 'show_receipt_discount';
+  static const String _keyShowReceiptTax = 'show_receipt_tax';
+  static const String _keyShowReceiptPaymentDetails = 'show_receipt_payment_details';
+  static const String _keyShowReceiptCashier = 'show_receipt_cashier';
+  static const String _keyShowReceiptCustomer = 'show_receipt_customer';
+  static const String _keyShowReceiptProfit = 'show_receipt_profit';
+  static const String _keyShowReceiptCostPrice = 'show_receipt_cost_price';
 
   late SharedPreferences _prefs;
 
@@ -219,6 +297,19 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       autoOpenCashDrawerOnSaleComplete: true,
       cashDrawerTriggerType: 'printer',
       cashDrawerComPort: 'COM1',
+      receiptTemplate: 'sri_lankan_retail',
+      receiptLanguage: 'si',
+      showReceiptLogo: true,
+      showReceiptBarcode: true,
+      showReceiptStandardPrice: true,
+      showReceiptOurPrice: true,
+      showReceiptDiscount: true,
+      showReceiptTax: true,
+      showReceiptPaymentDetails: true,
+      showReceiptCashier: true,
+      showReceiptCustomer: true,
+      showReceiptProfit: false,
+      showReceiptCostPrice: false,
       hasSelectedLanguage: false,
     );
   }
@@ -256,6 +347,19 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       autoOpenCashDrawerOnSaleComplete: _prefs.getBool(_keyAutoOpenCashDrawerOnSaleComplete) ?? true,
       cashDrawerTriggerType: _prefs.getString(_keyCashDrawerTriggerType) ?? 'printer',
       cashDrawerComPort: _prefs.getString(_keyCashDrawerComPort) ?? 'COM1',
+      receiptTemplate: _prefs.getString(_keyReceiptTemplate) ?? 'sri_lankan_retail',
+      receiptLanguage: _prefs.getString(_keyReceiptLanguage) ?? 'si',
+      showReceiptLogo: _prefs.getBool(_keyShowReceiptLogo) ?? true,
+      showReceiptBarcode: _prefs.getBool(_keyShowReceiptBarcode) ?? true,
+      showReceiptStandardPrice: _prefs.getBool(_keyShowReceiptStandardPrice) ?? true,
+      showReceiptOurPrice: _prefs.getBool(_keyShowReceiptOurPrice) ?? true,
+      showReceiptDiscount: _prefs.getBool(_keyShowReceiptDiscount) ?? true,
+      showReceiptTax: _prefs.getBool(_keyShowReceiptTax) ?? true,
+      showReceiptPaymentDetails: _prefs.getBool(_keyShowReceiptPaymentDetails) ?? true,
+      showReceiptCashier: _prefs.getBool(_keyShowReceiptCashier) ?? true,
+      showReceiptCustomer: _prefs.getBool(_keyShowReceiptCustomer) ?? true,
+      showReceiptProfit: _prefs.getBool(_keyShowReceiptProfit) ?? false,
+      showReceiptCostPrice: _prefs.getBool(_keyShowReceiptCostPrice) ?? false,
       hasSelectedLanguage: _prefs.getString(_keyLanguageCode) != null,
     );
   }
@@ -422,6 +526,59 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(cashDrawerComPort: clean);
   }
 
+  Future<void> updateReceiptTemplate(String template) async {
+    await _prefs.setString(_keyReceiptTemplate, template);
+    state = state.copyWith(receiptTemplate: template);
+    await _syncToCloud();
+  }
+
+  Future<void> updateReceiptLanguage(String lang) async {
+    await _prefs.setString(_keyReceiptLanguage, lang);
+    state = state.copyWith(receiptLanguage: lang);
+    await _syncToCloud();
+  }
+
+  Future<void> updateReceiptToggles({
+    bool? showLogo,
+    bool? showBarcode,
+    bool? showStandardPrice,
+    bool? showOurPrice,
+    bool? showDiscount,
+    bool? showTax,
+    bool? showPaymentDetails,
+    bool? showCashier,
+    bool? showCustomer,
+    bool? showProfit,
+    bool? showCostPrice,
+  }) async {
+    if (showLogo != null) await _prefs.setBool(_keyShowReceiptLogo, showLogo);
+    if (showBarcode != null) await _prefs.setBool(_keyShowReceiptBarcode, showBarcode);
+    if (showStandardPrice != null) await _prefs.setBool(_keyShowReceiptStandardPrice, showStandardPrice);
+    if (showOurPrice != null) await _prefs.setBool(_keyShowReceiptOurPrice, showOurPrice);
+    if (showDiscount != null) await _prefs.setBool(_keyShowReceiptDiscount, showDiscount);
+    if (showTax != null) await _prefs.setBool(_keyShowReceiptTax, showTax);
+    if (showPaymentDetails != null) await _prefs.setBool(_keyShowReceiptPaymentDetails, showPaymentDetails);
+    if (showCashier != null) await _prefs.setBool(_keyShowReceiptCashier, showCashier);
+    if (showCustomer != null) await _prefs.setBool(_keyShowReceiptCustomer, showCustomer);
+    if (showProfit != null) await _prefs.setBool(_keyShowReceiptProfit, showProfit);
+    if (showCostPrice != null) await _prefs.setBool(_keyShowReceiptCostPrice, showCostPrice);
+
+    state = state.copyWith(
+      showReceiptLogo: showLogo ?? state.showReceiptLogo,
+      showReceiptBarcode: showBarcode ?? state.showReceiptBarcode,
+      showReceiptStandardPrice: showStandardPrice ?? state.showReceiptStandardPrice,
+      showReceiptOurPrice: showOurPrice ?? state.showReceiptOurPrice,
+      showReceiptDiscount: showDiscount ?? state.showReceiptDiscount,
+      showReceiptTax: showTax ?? state.showReceiptTax,
+      showReceiptPaymentDetails: showPaymentDetails ?? state.showReceiptPaymentDetails,
+      showReceiptCashier: showCashier ?? state.showReceiptCashier,
+      showReceiptCustomer: showCustomer ?? state.showReceiptCustomer,
+      showReceiptProfit: showProfit ?? state.showReceiptProfit,
+      showReceiptCostPrice: showCostPrice ?? state.showReceiptCostPrice,
+    );
+    await _syncToCloud();
+  }
+
   Future<void> updateFromMap(Map<String, dynamic> data) async {
     if (data.containsKey(_keyShopName)) {
       await _prefs.setString(_keyShopName, data[_keyShopName]);
@@ -506,6 +663,67 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
     }
     if (data.containsKey(_keyCashDrawerComPort)) {
       await _prefs.setString(_keyCashDrawerComPort, data[_keyCashDrawerComPort]);
+    }
+    if (data.containsKey(_keyReceiptTemplate)) {
+      await _prefs.setString(_keyReceiptTemplate, data[_keyReceiptTemplate]);
+    }
+    if (data.containsKey(_keyReceiptLanguage)) {
+      await _prefs.setString(_keyReceiptLanguage, data[_keyReceiptLanguage]);
+    }
+    if (data.containsKey(_keyShowReceiptLogo)) {
+      final val = data[_keyShowReceiptLogo];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptLogo, show);
+    }
+    if (data.containsKey(_keyShowReceiptBarcode)) {
+      final val = data[_keyShowReceiptBarcode];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptBarcode, show);
+    }
+    if (data.containsKey(_keyShowReceiptStandardPrice)) {
+      final val = data[_keyShowReceiptStandardPrice];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptStandardPrice, show);
+    }
+    if (data.containsKey(_keyShowReceiptOurPrice)) {
+      final val = data[_keyShowReceiptOurPrice];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptOurPrice, show);
+    }
+    if (data.containsKey(_keyShowReceiptDiscount)) {
+      final val = data[_keyShowReceiptDiscount];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptDiscount, show);
+    }
+    if (data.containsKey(_keyShowReceiptTax)) {
+      final val = data[_keyShowReceiptTax];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptTax, show);
+    }
+    if (data.containsKey(_keyShowReceiptPaymentDetails)) {
+      final val = data[_keyShowReceiptPaymentDetails];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptPaymentDetails, show);
+    }
+    if (data.containsKey(_keyShowReceiptCashier)) {
+      final val = data[_keyShowReceiptCashier];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptCashier, show);
+    }
+    if (data.containsKey(_keyShowReceiptCustomer)) {
+      final val = data[_keyShowReceiptCustomer];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptCustomer, show);
+    }
+    if (data.containsKey(_keyShowReceiptProfit)) {
+      final val = data[_keyShowReceiptProfit];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptProfit, show);
+    }
+    if (data.containsKey(_keyShowReceiptCostPrice)) {
+      final val = data[_keyShowReceiptCostPrice];
+      final bool show = (val is bool) ? val : (val == 1 || val == 'true');
+      await _prefs.setBool(_keyShowReceiptCostPrice, show);
     }
     
     // Refresh local state

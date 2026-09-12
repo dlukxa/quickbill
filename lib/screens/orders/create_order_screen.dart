@@ -10,6 +10,7 @@ import '../../providers/customer_provider.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../utils/region_utils.dart';
 import '../../utils/formatters.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 
 class CreateOrderScreen extends ConsumerStatefulWidget {
   const CreateOrderScreen({super.key});
@@ -42,7 +43,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
+              SinglishTextField(
                 controller: descCtrl,
                 decoration: InputDecoration(labelText: localizations.description),
               ),
@@ -219,7 +220,7 @@ class _CreateOrderScreenState extends ConsumerState<CreateOrderScreen> {
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),
             const SizedBox(height: 12),
-            TextFormField(
+            SinglishTextFormField(
               controller: _notesController,
               decoration: InputDecoration(labelText: localizations.notesMeasurements, border: const OutlineInputBorder(), alignLabelWithHint: true),
               maxLines: 3,

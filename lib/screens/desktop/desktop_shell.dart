@@ -10,6 +10,7 @@ import '../../providers/employee_provider.dart';
 import '../../providers/preference_provider.dart';
 import '../../services/cash_drawer_service.dart';
 import '../../services/sync_service.dart';
+import '../../utils/pos_l10n.dart';
 import 'desktop_customers_view.dart';
 import 'desktop_dashboard_view.dart';
 import 'desktop_expenses_view.dart';
@@ -103,11 +104,12 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
 
   void _ejectCashDrawer() async {
     final settings = ref.read(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
     final res = await CashDrawerService.instance.openCashDrawer(settings, isManual: true);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res.success ? 'Cash Drawer Ejected' : 'Cash Drawer: ${res.message}'),
+          content: Text(res.success ? posL10n.drawerEjected : 'Cash Drawer: ${res.message}'),
           backgroundColor: res.success ? AppTheme.primaryGreen : Colors.orange.shade800,
           duration: const Duration(seconds: 2),
         ),
@@ -122,6 +124,8 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
     final currentEmp = ref.watch(currentEmployeeProvider).value;
     final selectedBranch = ref.watch(branchProvider).selectedBranch;
 
@@ -154,23 +158,23 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                     child: ListView(
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                       children: [
-                        _buildNavButton(0, 'POS Terminal', Icons.point_of_sale_rounded, 'F1'),
-                        _buildNavButton(1, 'Dashboard', Icons.analytics_rounded, 'F2'),
-                        _buildNavButton(2, 'Inventory', Icons.inventory_2_rounded, 'F3'),
-                        _buildNavButton(3, 'Invoices & Sales', Icons.receipt_long_rounded, 'F4'),
-                        _buildNavButton(4, 'Customers', Icons.people_alt_rounded, 'F5'),
-                        _buildNavButton(5, 'Suppliers (GRN)', Icons.local_shipping_rounded, 'F6'),
-                        _buildNavButton(6, 'Expenses', Icons.payments_rounded, 'F7'),
+                        _buildNavButton(0, posL10n.posTerminal, Icons.point_of_sale_rounded, 'F1'),
+                        _buildNavButton(1, posL10n.dashboardNav, Icons.analytics_rounded, 'F2'),
+                        _buildNavButton(2, posL10n.inventoryNav, Icons.inventory_2_rounded, 'F3'),
+                        _buildNavButton(3, posL10n.invoicesAndSalesNav, Icons.receipt_long_rounded, 'F4'),
+                        _buildNavButton(4, posL10n.customersNav, Icons.people_alt_rounded, 'F5'),
+                        _buildNavButton(5, posL10n.suppliersGrnNav, Icons.local_shipping_rounded, 'F6'),
+                        _buildNavButton(6, posL10n.expensesNav, Icons.payments_rounded, 'F7'),
                         const SizedBox(height: 8),
                         const Divider(height: 1, color: Color(0xFF334155)),
                         const SizedBox(height: 8),
-                        _buildNavButton(7, 'Settings', Icons.settings_rounded, 'F10'),
+                        _buildNavButton(7, posL10n.settingsNav, Icons.settings_rounded, 'F10'),
                       ],
                     ),
                   ),
 
                   // Bottom Utilities & Profile
-                  _buildSidebarFooter(currentEmp),
+                  _buildSidebarFooter(currentEmp, posL10n),
                 ],
               ),
             ),
@@ -297,7 +301,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     );
   }
 
-  Widget _buildSidebarFooter(Employee? currentEmp) {
+  Widget _buildSidebarFooter(Employee? currentEmp, PosL10n posL10n) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: const BoxDecoration(
@@ -312,12 +316,12 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
             children: [
               IconButton(
                 icon: const Icon(Icons.point_of_sale_rounded, size: 18, color: AppTheme.primaryGreen),
-                tooltip: 'Open Cash Drawer (F9)',
+                tooltip: posL10n.openCashDrawerTooltip,
                 onPressed: _ejectCashDrawer,
               ),
               IconButton(
                 icon: const Icon(Icons.lock_outline_rounded, size: 18, color: Colors.orange),
-                tooltip: 'Lock Terminal / Switch User (F8)',
+                tooltip: posL10n.lockTerminalTooltip,
                 onPressed: _lockTerminal,
               ),
               IconButton(
@@ -326,7 +330,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                   size: 20,
                   color: const Color(0xFF94A3B8),
                 ),
-                tooltip: _isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar',
+                tooltip: _isSidebarCollapsed ? posL10n.expandSidebar : posL10n.collapseSidebar,
                 onPressed: () => setState(() => _isSidebarCollapsed = !_isSidebarCollapsed),
               ),
             ],

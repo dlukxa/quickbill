@@ -74,6 +74,9 @@ class Product {
   })  : createdAt = createdAt ?? DateTime.now(),
         updatedAt = updatedAt ?? DateTime.now();
 
+  /// Primary barcode getter alias for baseBarcode
+  String? get barcode => baseBarcode;
+
   /// Returns canonical base unit (e.g. 'kg', 'L', 'pcs', 'm').
   String get baseUnit => UnitConversionService.normalizeUnit(unit);
 

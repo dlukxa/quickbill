@@ -7,6 +7,7 @@ import '../../providers/preference_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../services/sinhala_search_service.dart';
 import '../../utils/formatters.dart';
+import '../../utils/pos_l10n.dart';
 import '../../widgets/add_stock_dialog.dart';
 import '../../widgets/cached_product_image.dart';
 import '../stock/add_product_screen.dart';
@@ -86,6 +87,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    final posL10n = PosL10n.of(settings.languageCode);
     final isDark = settings.isDarkMode;
     final productsAsync = ref.watch(productsProvider);
 
@@ -145,7 +147,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Inventory & Product Catalog',
+                          posL10n.inventoryCatalog,
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
@@ -154,7 +156,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Manage products, stock levels, multi-selling modes, and batches',
+                          posL10n.inventorySubtitle,
                           style: GoogleFonts.inter(fontSize: 13, color: textSecondary),
                         ),
                       ],
@@ -165,7 +167,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                       children: [
                         OutlinedButton.icon(
                           icon: const Icon(Icons.price_change_rounded, size: 16),
-                          label: const Text('Price Manager'),
+                          label: Text(posL10n.pricesAndUnits),
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(builder: (_) => const ProductPriceManagerScreen()),
@@ -173,7 +175,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                         ),
                         OutlinedButton.icon(
                           icon: const Icon(Icons.archive_outlined, size: 16),
-                          label: const Text('Archived'),
+                          label: Text(posL10n.archived),
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(builder: (_) => const ArchivedProductsScreen()),
@@ -181,7 +183,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                         ),
                         ElevatedButton.icon(
                           icon: const Icon(Icons.add_rounded, size: 18),
-                          label: const Text('+ Add Product (F3)'),
+                          label: Text(posL10n.newProduct),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryGreen,
                             foregroundColor: Colors.white,
@@ -201,7 +203,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                   children: [
                     Expanded(
                       child: _buildMetricCard(
-                        title: 'TOTAL PRODUCTS',
+                        title: posL10n.totalItems,
                         value: totalCount.toString(),
                         subtitle: 'Active SKUs',
                         color: AppTheme.primaryBlue,
@@ -214,7 +216,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: _buildMetricCard(
-                        title: 'LOW STOCK ITEMS',
+                        title: posL10n.lowStockAlert,
                         value: lowStockList.length.toString(),
                         subtitle: 'Below threshold',
                         color: Colors.amber.shade700,
@@ -227,7 +229,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: _buildMetricCard(
-                        title: 'OUT OF STOCK',
+                        title: posL10n.outOfStockBadge,
                         value: outOfStockList.length.toString(),
                         subtitle: 'Requires immediate restock',
                         color: AppTheme.errorRed,
@@ -240,7 +242,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: _buildMetricCard(
-                        title: 'TOTAL VALUATION',
+                        title: posL10n.totalValuation,
                         value: Formatters.currency(totalValuation),
                         subtitle: 'Inventory at cost',
                         color: AppTheme.primaryGreen,
@@ -271,7 +273,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                           controller: _searchController,
                           onChanged: (val) => setState(() => _searchQuery = val),
                           decoration: InputDecoration(
-                            hintText: 'Search by name, Sinhala, barcode, or alias...',
+                            hintText: posL10n.searchHint,
                             prefixIcon: const Icon(Icons.search_rounded, size: 20),
                             suffixIcon: _searchQuery.isNotEmpty
                                 ? IconButton(
@@ -297,15 +299,15 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                           value: _selectedCategory,
                           isDense: true,
                           decoration: InputDecoration(
-                            labelText: 'Category',
+                            labelText: posL10n.categoryCol,
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           items: [
-                            const DropdownMenuItem<String?>(
+                            DropdownMenuItem<String?>(
                               value: null,
-                              child: Text('All Categories'),
+                              child: Text(posL10n.allItems),
                             ),
                             ...sortedCategories.map((c) => DropdownMenuItem<String?>(
                                   value: c,
@@ -320,14 +322,14 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                       // Status Segmented Filter
                       SegmentedButton<String>(
                         segments: [
-                          const ButtonSegment(value: 'all', label: Text('All')),
+                          ButtonSegment(value: 'all', label: Text(posL10n.allItems)),
                           ButtonSegment(
                             value: 'low',
-                            label: Text('Low (${lowStockList.length})'),
+                            label: Text('${posL10n.lowStock} (${lowStockList.length})'),
                           ),
                           ButtonSegment(
                             value: 'out',
-                            label: Text('Out (${outOfStockList.length})'),
+                            label: Text('${posL10n.outOfStock} (${outOfStockList.length})'),
                           ),
                         ],
                         selected: {_statusFilter},
@@ -355,13 +357,13 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                                 Icon(Icons.inventory_2_outlined, size: 48, color: textSecondary),
                                 const SizedBox(height: 12),
                                 Text(
-                                  _searchQuery.isNotEmpty ? 'No products match "$_searchQuery"' : 'No products in this view',
+                                  _searchQuery.isNotEmpty ? 'No products match "$_searchQuery"' : posL10n.noProductsFound,
                                   style: GoogleFonts.inter(fontSize: 15, color: textSecondary, fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 12),
                                 ElevatedButton.icon(
                                   icon: const Icon(Icons.add_rounded, size: 16),
-                                  label: const Text('Add New Product'),
+                                  label: Text(posL10n.newProduct),
                                   onPressed: () => _openAddProduct(),
                                 ),
                               ],
@@ -377,16 +379,16 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                             dataRowMinHeight: 52,
                             dataRowMaxHeight: 64,
                             columnSpacing: 18,
-                            columns: const [
-                              DataColumn(label: Text('PRODUCT')),
-                              DataColumn(label: Text('BARCODE')),
-                              DataColumn(label: Text('CATEGORY')),
-                              DataColumn(label: Text('COST (RS.)'), numeric: true),
-                              DataColumn(label: Text('PRICE (RS.)'), numeric: true),
-                              DataColumn(label: Text('MODES')),
-                              DataColumn(label: Text('STOCK'), numeric: true),
-                              DataColumn(label: Text('STATUS')),
-                              DataColumn(label: Text('ACTIONS')),
+                            columns: [
+                              DataColumn(label: Text(posL10n.productCol)),
+                              DataColumn(label: Text(posL10n.barcodeCol)),
+                              DataColumn(label: Text(posL10n.categoryCol)),
+                              DataColumn(label: Text('${posL10n.costCol} (RS.)'), numeric: true),
+                              DataColumn(label: Text('${posL10n.sellingPriceCol} (RS.)'), numeric: true),
+                              DataColumn(label: Text(posL10n.multiModeBadge)),
+                              DataColumn(label: Text(posL10n.stockLevelCol), numeric: true),
+                              DataColumn(label: Text(posL10n.status)),
+                              DataColumn(label: Text(posL10n.actionsCol)),
                             ],
                             rows: displayed.map((p) {
                               final isOut = p.stock <= 0;
@@ -394,16 +396,16 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
 
                               Color badgeBg = AppTheme.primaryGreen.withValues(alpha: 0.12);
                               Color badgeFg = AppTheme.primaryGreen;
-                              String badgeLabel = 'In Stock';
+                              String badgeLabel = posL10n.inStock;
 
                               if (isOut) {
                                 badgeBg = AppTheme.errorRed.withValues(alpha: 0.12);
                                 badgeFg = AppTheme.errorRed;
-                                badgeLabel = 'Out of Stock';
+                                badgeLabel = posL10n.outOfStock;
                               } else if (isLow) {
                                 badgeBg = Colors.amber.withValues(alpha: 0.15);
                                 badgeFg = Colors.amber.shade800;
-                                badgeLabel = 'Low Stock';
+                                badgeLabel = posL10n.lowStock;
                               }
 
                               return DataRow(
@@ -574,19 +576,19 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                                         IconButton(
                                           icon: const Icon(Icons.add_box_outlined, size: 18),
                                           color: AppTheme.primaryGreen,
-                                          tooltip: 'Restock / Add Stock',
+                                          tooltip: posL10n.restock,
                                           onPressed: () => _openRestock(p),
                                         ),
                                         IconButton(
                                           icon: const Icon(Icons.edit_outlined, size: 18),
                                           color: AppTheme.primaryBlue,
-                                          tooltip: 'Edit Product',
+                                          tooltip: posL10n.edit,
                                           onPressed: () => _openAddProduct(p),
                                         ),
                                         IconButton(
                                           icon: const Icon(Icons.layers_outlined, size: 18),
                                           color: Colors.purple,
-                                          tooltip: 'Batches',
+                                          tooltip: posL10n.batches,
                                           onPressed: () => Navigator.push(
                                             context,
                                             MaterialPageRoute(builder: (_) => BatchListScreen(product: p)),

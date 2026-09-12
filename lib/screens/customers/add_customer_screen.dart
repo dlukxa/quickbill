@@ -7,6 +7,7 @@ import '../../providers/customer_provider.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/gradient_button.dart';
 import '../../widgets/animate_in.dart';
+import '../../widgets/sinhala_transliteration_input.dart';
 
 class AddCustomerScreen extends ConsumerStatefulWidget {
   final Customer? customer; // For editing
@@ -105,7 +106,7 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
-                        TextFormField(
+                        SinglishTextFormField(
                           controller: _nameController,
                           decoration: InputDecoration(
                             labelText: l10n.fullNameLabel,
@@ -125,7 +126,7 @@ class _AddCustomerScreenState extends ConsumerState<AddCustomerScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        TextFormField(
+                        SinglishTextFormField(
                           controller: _addressController,
                           maxLines: 2,
                           decoration: InputDecoration(
