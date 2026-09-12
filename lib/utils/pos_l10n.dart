@@ -253,6 +253,7 @@ class ReceiptL10n {
   const ReceiptL10n(this.lang);
 
   static ReceiptL10n of(String? code) => ReceiptL10n(code ?? 'si');
+  static ReceiptL10n forLanguage(String? code) => of(code);
 
   bool get isSi => lang == 'si' || lang == 'sinhala';
   bool get isTa => lang == 'ta' || lang == 'tamil';
@@ -341,6 +342,38 @@ class ReceiptL10n {
               ? 'එකතුව / Total'
               : 'TOTAL';
 
+  String get qtyDescHeader => isSi
+      ? 'ප්‍රමාණය / විස්තරය'
+      : isTa
+          ? 'அளவு / விவரம்'
+          : isBilingual
+              ? 'ප්‍රමාණය / විස්තරය / Qty & Desc'
+              : 'QTY / DESC';
+
+  String get returns => isSi
+      ? 'මාරුවාරු'
+      : isTa
+          ? 'பரிமாற்றம்'
+          : isBilingual
+              ? 'මාරුවාරු / Returns'
+              : 'Returns';
+
+  String get cash => isSi
+      ? 'මුදල්'
+      : isTa
+          ? 'பணம்'
+          : isBilingual
+              ? 'මුදල් / Cash'
+              : 'Cash';
+
+  String get card => isSi
+      ? 'කාඩ්'
+      : isTa
+          ? 'அட்டை'
+          : isBilingual
+              ? 'කාඩ් / Card'
+              : 'Card';
+
   // ─── Sri Lankan Retail POS Pricing Breakdown ───
   String get standardPrice => isSi
       ? 'සදාන් මිල'
@@ -367,11 +400,11 @@ class ReceiptL10n {
               : 'Subtotal';
 
   String get discount => isSi
-      ? 'වට්ටම්'
+      ? 'ලාභය'
       : isTa
           ? 'தள்ளுபடி'
           : isBilingual
-              ? 'වට්ටම් / Discount'
+              ? 'ලාභය / Discount'
               : 'Discount';
 
   String get profit => isSi

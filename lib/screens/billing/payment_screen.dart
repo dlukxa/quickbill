@@ -16,6 +16,7 @@ import '../../generated/l10n/app_localizations.dart';
 import '../../services/share_service.dart';
 import '../../utils/region_utils.dart';
 import '../../providers/multi_bill_provider.dart';
+import '../../widgets/receipt/receipt_preview_dialog.dart';
 
 class PaymentScreen extends ConsumerStatefulWidget {
   final List<CartItem> cartItems;
@@ -642,6 +643,18 @@ class _SuccessDialogState extends ConsumerState<_SuccessDialog> {
               },
               icon: const Icon(Icons.print, size: 18),
               label: Text(settings.is58mm ? 'Print Receipt (58mm)' : 'Print Receipt (80mm)'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => ReceiptPreviewDialog.show(
+                context,
+                sale: widget.sale,
+                items: _buildSaleItems(),
+                settings: settings,
+                cashReceived: cashRcvd,
+                change: widget.change,
+              ),
+              icon: const Icon(Icons.preview_rounded, size: 18),
+              label: const Text('Preview Receipt'),
             ),
             ElevatedButton(
               onPressed: () async => PdfService.instance.generateProfessionalInvoice(widget.sale, _buildSaleItems(), settings: settings),

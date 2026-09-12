@@ -4,6 +4,7 @@ import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import '../utils/region_utils.dart';
 import '../models/sale.dart';
 import '../models/sale_item.dart';
@@ -12,6 +13,7 @@ import '../models/purchase.dart';
 import '../utils/formatters.dart';
 import '../utils/pos_l10n.dart';
 import '../providers/preference_provider.dart';
+import 'receipt_image_generator.dart';
 
 class PdfService {
   static final PdfService instance = PdfService._internal();
@@ -32,57 +34,80 @@ class PdfService {
     if (_theme != null) return _theme!;
     _fontLoadAttempted = true;
 
-    pw.Font? baseFont;
-    pw.Font? boldFont;
-    pw.Font? sinhalaFont;
+    // ─── Strategy: Use NotoSansSinhala as the PRIMARY base font.
+    // This ensures Sinhala glyphs render correctly without any fallback lookup.
+    // NotoSans (Latin) is added as a fontFallback for English/numbers.
+    // This fixes garbled/broken Sinhala characters in generated PDFs.
+
+    pw.Font? sinhalaRegular;
+    pw.Font? sinhalaBold;   // NotoSansSinhala doesn't ship a Bold TTF; we use SemiBold from Google
+    pw.Font? latinRegular;
+    pw.Font? latinBold;
     pw.Font? tamilFont;
 
-    // 1. Try loading from bundled assets first (100% offline guarantee)
+    // 1. Load bundled Sinhala fonts (primary) — always offline
     try {
-      final sinhalaData = await rootBundle.load('assets/fonts/NotoSansSinhala-Regular.ttf');
-      sinhalaFont = pw.Font.ttf(sinhalaData);
+      final data = await rootBundle.load('assets/fonts/NotoSansSinhala-Regular.ttf');
+      sinhalaRegular = pw.Font.ttf(data);
+      debugPrint('PDF: Loaded bundled NotoSansSinhala-Regular');
     } catch (e) {
-      debugPrint('Note: Local Sinhala font asset load error: $e');
+      debugPrint('PDF: NotoSansSinhala-Regular load error: $e');
     }
 
     try {
-      final baseData = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
-      baseFont = pw.Font.ttf(baseData);
+      final data = await rootBundle.load('assets/fonts/NotoSansSinhala-Bold.ttf');
+      sinhalaBold = pw.Font.ttf(data);
+      debugPrint('PDF: Loaded bundled NotoSansSinhala-Bold');
     } catch (e) {
-      debugPrint('Note: Local base font asset load error: $e');
+      debugPrint('PDF: NotoSansSinhala-Bold load error: $e');
+    }
+
+    // 2. Load bundled Latin NotoSans (used as fallback for ASCII/numbers)
+    try {
+      final data = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+      latinRegular = pw.Font.ttf(data);
+      debugPrint('PDF: Loaded bundled NotoSans-Regular');
+    } catch (e) {
+      debugPrint('PDF: NotoSans-Regular load error: $e');
     }
 
     try {
-      final boldData = await rootBundle.load('assets/fonts/NotoSans-Bold.ttf');
-      boldFont = pw.Font.ttf(boldData);
+      final data = await rootBundle.load('assets/fonts/NotoSans-Bold.ttf');
+      latinBold = pw.Font.ttf(data);
+      debugPrint('PDF: Loaded bundled NotoSans-Bold');
     } catch (e) {
-      debugPrint('Note: Local bold font asset load error: $e');
+      debugPrint('PDF: NotoSans-Bold load error: $e');
     }
 
-    // 2. Fallback to PdfGoogleFonts if assets are missing
-    baseFont ??= await _tryGoogleFont(PdfGoogleFonts.notoSansRegular) ?? pw.Font.helvetica();
-    boldFont ??= await _tryGoogleFont(PdfGoogleFonts.notoSansBold) ?? pw.Font.helveticaBold();
-    sinhalaFont ??= await _tryGoogleFont(PdfGoogleFonts.notoSansSinhalaRegular);
+    // 3. Google Fonts fallback for anything missing from assets
+    sinhalaRegular ??= await _tryGoogleFont(PdfGoogleFonts.notoSansSinhalaRegular);
+    sinhalaBold ??= await _tryGoogleFont(PdfGoogleFonts.notoSansSinhalaSemiBold);
+    latinRegular ??= await _tryGoogleFont(PdfGoogleFonts.notoSansRegular) ?? pw.Font.helvetica();
+    latinBold ??= await _tryGoogleFont(PdfGoogleFonts.notoSansBold) ?? pw.Font.helveticaBold();
     tamilFont = await _tryGoogleFont(PdfGoogleFonts.notoSansTamilRegular);
 
-    final fontFallbacks = <pw.Font>[];
-    if (sinhalaFont != null) {
-      fontFallbacks.add(sinhalaFont);
-    }
-    if (tamilFont != null) {
-      fontFallbacks.add(tamilFont);
-    }
+    // 4. Resolve effective base: prefer Sinhala as primary for correct Unicode shaping
+    final effectiveBase = sinhalaRegular ?? latinRegular;
+    final effectiveBold = sinhalaBold ?? sinhalaRegular ?? latinBold;
+
+    // 5. fontFallback list — Latin first (numbers/English), then Tamil
+    final fontFallbacks = <pw.Font>[
+      if (latinRegular != null) latinRegular,
+      if (latinBold != null) latinBold,
+      if (tamilFont != null) tamilFont,
+    ];
 
     try {
       _theme = pw.ThemeData.withFont(
-        base: baseFont,
-        bold: boldFont,
-        italic: baseFont,
-        boldItalic: boldFont,
+        base: effectiveBase,
+        bold: effectiveBold,
+        italic: effectiveBase,
+        boldItalic: effectiveBold,
         fontFallback: fontFallbacks,
       );
+      debugPrint('PDF: Theme created — base=NotoSansSinhala, fallbacks=${fontFallbacks.length}');
     } catch (e) {
-      debugPrint('Error creating PDF theme: $e');
+      debugPrint('PDF: Error creating theme: $e — falling back to base theme');
       _theme = pw.ThemeData.base();
     }
     return _theme!;
@@ -104,6 +129,23 @@ class PdfService {
     double? cashReceived,
     double? change,
   }) async {
+    final effectiveSettings = _resolveSettings(settings);
+    final bool is58mm = overridePaperSize == '58mm' || (overridePaperSize == null && effectiveSettings.is58mm);
+
+    // If Sinhala characters or non-English receipt settings are present,
+    // render through the Flutter offscreen image generator for 100% accurate HarfBuzz text shaping
+    if (_hasSinhalaContent(sale, items, settings)) {
+      final pngBytes = await ReceiptImageGenerator.instance.generateReceiptImage(
+        sale: sale,
+        items: items,
+        settings: effectiveSettings,
+        cashReceived: cashReceived,
+        change: change,
+        overridePaperSize: overridePaperSize,
+      );
+      return buildImageReceiptDocument(pngBytes, is58mm: is58mm);
+    }
+
     final template = settings?.receiptTemplate ?? 'sri_lankan_retail';
     if (template == 'classic') {
       return _buildClassicReceipt(
@@ -124,6 +166,77 @@ class PdfService {
         change: change,
       );
     }
+  }
+
+  bool _hasSinhalaContent(Sale sale, List<SaleItem> items, AppSettings? settings) {
+    if (settings != null) {
+      if (settings.receiptLanguage != 'en') return true;
+      if (settings.receiptTemplate == 'sri_lankan_retail') return true;
+      if (_containsSinhalaChars(settings.shopName)) return true;
+      if (_containsSinhalaChars(settings.shopAddress)) return true;
+      if (_containsSinhalaChars(settings.receiptFooter)) return true;
+    }
+    if (sale.cashierName != null && _containsSinhalaChars(sale.cashierName!)) return true;
+    if (sale.customerName != null && _containsSinhalaChars(sale.customerName!)) return true;
+    for (final item in items) {
+      if (_containsSinhalaChars(item.productName)) return true;
+    }
+    return false;
+  }
+
+  bool _containsSinhalaChars(String text) {
+    for (final rune in text.runes) {
+      if (rune >= 0x0D80 && rune <= 0x0DFF) return true;
+    }
+    return false;
+  }
+
+  AppSettings _resolveSettings(AppSettings? settings) {
+    if (settings != null) return settings;
+    return AppSettings(
+      shopName: 'QuickBill Store',
+      shopAddress: '',
+      shopPhone: '',
+      lowStockThreshold: 10,
+      receiptFooter: 'Thank you for shopping!',
+      languageCode: 'si',
+      regionCode: 'LK',
+      businessType: 'Retail',
+      isSetupComplete: true,
+      autoSync: false,
+      entityCode: '1',
+      printerPaperSize: '80mm',
+      receiptTemplate: 'sri_lankan_retail',
+      receiptLanguage: 'si',
+    );
+  }
+
+  /// Builds a PDF Document from a high-resolution raster receipt image (e.g. Flutter-rendered Sinhala receipt).
+  Future<pw.Document> buildImageReceiptDocument(
+    Uint8List pngBytes, {
+    required bool is58mm,
+  }) async {
+    final doc = pw.Document();
+    final image = pw.MemoryImage(pngBytes);
+    final double pageWidth = (is58mm ? 58.0 : 80.0) * PdfPageFormat.mm;
+
+    // Decode image to compute proper page aspect ratio
+    final decoded = img.decodeImage(pngBytes);
+    final double aspectRatio = (decoded != null && decoded.width > 0)
+        ? (decoded.height / decoded.width)
+        : 1.8;
+    final double pageHeight = pageWidth * aspectRatio;
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat(pageWidth, pageHeight, marginAll: 0),
+        build: (context) => pw.FullPage(
+          ignoreMargins: true,
+          child: pw.Image(image, fit: pw.BoxFit.fill),
+        ),
+      ),
+    );
+    return doc;
   }
 
   /// ─────────────────────────────────────────────────────────────
@@ -333,6 +446,21 @@ class PdfService {
       );
     }
 
+    pw.Widget buildDashedDivider({double height = 4.0, double thickness = 0.8}) {
+      return pw.Container(
+        margin: pw.EdgeInsets.symmetric(vertical: height / 2),
+        decoration: pw.BoxDecoration(
+          border: pw.Border(
+            bottom: pw.BorderSide(
+              style: pw.BorderStyle.dashed,
+              width: thickness,
+              color: PdfColors.black,
+            ),
+          ),
+        ),
+      );
+    }
+
     doc.addPage(
       pw.Page(
         theme: await _getTheme(),
@@ -385,7 +513,7 @@ class PdfService {
                   ),
                 ),
               pw.SizedBox(height: 2),
-              pw.Divider(thickness: 0.6, height: 4),
+              buildDashedDivider(height: 4, thickness: 0.8),
 
               // ── 2. METADATA BLOCK ──
               pw.Row(
@@ -417,36 +545,45 @@ class PdfService {
                   ],
                 ),
               ],
-              pw.Divider(thickness: 0.6, height: 4),
+              buildDashedDivider(height: 4, thickness: 0.8),
 
-              // ── 3. 3-COLUMN RETAIL ITEM TABLE HEADER ──
+              // ── 3. 4-COLUMN SUPERMARKET ITEM TABLE HEADER ──
               pw.Row(
                 children: [
                   pw.Expanded(
+                    flex: is58mm ? 34 : 38,
                     child: pw.Text(
-                      l10n.itemHeader,
+                      l10n.qtyDescHeader,
                       style: pw.TextStyle(fontSize: headerFontSize, fontWeight: pw.FontWeight.bold),
                     ),
                   ),
-                  pw.SizedBox(
-                    width: qtyColWidth,
-                    child: pw.Text(
-                      l10n.qtyHeader,
-                      style: pw.TextStyle(fontSize: headerFontSize, fontWeight: pw.FontWeight.bold),
-                      textAlign: pw.TextAlign.center,
-                    ),
-                  ),
-                  pw.SizedBox(
-                    width: priceColWidth,
+                  pw.Expanded(
+                    flex: is58mm ? 20 : 18,
                     child: pw.Text(
                       l10n.priceHeader,
                       style: pw.TextStyle(fontSize: headerFontSize, fontWeight: pw.FontWeight.bold),
                       textAlign: pw.TextAlign.right,
                     ),
                   ),
+                  pw.Expanded(
+                    flex: is58mm ? 22 : 21,
+                    child: pw.Text(
+                      l10n.ourPrice,
+                      style: pw.TextStyle(fontSize: headerFontSize, fontWeight: pw.FontWeight.bold),
+                      textAlign: pw.TextAlign.right,
+                    ),
+                  ),
+                  pw.Expanded(
+                    flex: is58mm ? 24 : 23,
+                    child: pw.Text(
+                      l10n.totalHeader,
+                      style: pw.TextStyle(fontSize: headerFontSize, fontWeight: pw.FontWeight.bold),
+                      textAlign: pw.TextAlign.right,
+                    ),
+                  ),
                 ],
               ),
-              pw.Divider(thickness: 0.5, height: 3),
+              buildDashedDivider(height: 3, thickness: 0.6),
 
               // ── 4. TABLE ITEMS ──
               for (final item in items) ...[
@@ -455,25 +592,39 @@ class PdfService {
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      // Item Name
+                      // Item Name (Bold)
                       pw.Text(
                         item.productName,
                         style: pw.TextStyle(fontSize: bodyFontSize, fontWeight: pw.FontWeight.bold, lineSpacing: 1.1),
                       ),
-                      // Qty and Line Total
+                      // 4-Column Values: Qty | Std Price | Our Price | Total
                       pw.Row(
                         children: [
-                          pw.Expanded(child: pw.SizedBox()),
-                          pw.SizedBox(
-                            width: qtyColWidth,
+                          pw.Expanded(
+                            flex: is58mm ? 34 : 38,
                             child: pw.Text(
                               formatQty(item),
                               style: pw.TextStyle(fontSize: bodyFontSize),
-                              textAlign: pw.TextAlign.center,
                             ),
                           ),
-                          pw.SizedBox(
-                            width: priceColWidth,
+                          pw.Expanded(
+                            flex: is58mm ? 20 : 18,
+                            child: pw.Text(
+                              Formatters.number(itemStdPrice(item), decimalPlaces: 2),
+                              style: pw.TextStyle(fontSize: bodyFontSize),
+                              textAlign: pw.TextAlign.right,
+                            ),
+                          ),
+                          pw.Expanded(
+                            flex: is58mm ? 22 : 21,
+                            child: pw.Text(
+                              Formatters.number(itemOurPrice(item), decimalPlaces: 2),
+                              style: pw.TextStyle(fontSize: bodyFontSize),
+                              textAlign: pw.TextAlign.right,
+                            ),
+                          ),
+                          pw.Expanded(
+                            flex: is58mm ? 24 : 23,
                             child: pw.Text(
                               Formatters.number(item.total, decimalPlaces: 2),
                               style: pw.TextStyle(fontSize: bodyFontSize, fontWeight: pw.FontWeight.bold),
@@ -482,37 +633,21 @@ class PdfService {
                           ),
                         ],
                       ),
-                      // Sub-detail: Standard price, our price, discount if present
-                      if ((itemSavings(item) > 0 || (itemStdPrice(item) != itemOurPrice(item))) && showDiscount)
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.only(top: 0.5),
-                          child: pw.Text(
-                            '(${l10n.standardPrice}: ${Formatters.number(itemStdPrice(item), decimalPlaces: 2)} | ${l10n.ourPrice}: ${Formatters.number(itemOurPrice(item), decimalPlaces: 2)}${itemSavings(item) > 0 ? " | ${l10n.profit}: ${Formatters.number(itemSavings(item), decimalPlaces: 2)}" : ""})',
-                            style: pw.TextStyle(fontSize: smallFontSize, color: PdfColors.grey700),
-                          ),
-                        ),
                     ],
                   ),
                 ),
               ],
-              pw.Divider(thickness: 0.6, height: 4),
+              buildDashedDivider(height: 4, thickness: 0.8),
 
               // ── 5. FINANCIAL BREAKDOWN ──
-              if (showStdPrice && grossStandardTotal > sale.total) ...[
-                buildSummaryRow(l10n.standardPrice, Formatters.number(grossStandardTotal, decimalPlaces: 2), fontSize: bodyFontSize),
-                pw.SizedBox(height: 1.0),
-              ],
-              if (showOurPrice) ...[
-                buildSummaryRow(l10n.ourPrice, Formatters.number(subtotalOurPrice, decimalPlaces: 2), fontSize: bodyFontSize),
-                pw.SizedBox(height: 1.0),
-              ],
-              buildSummaryRow(l10n.subtotal, Formatters.number(subtotalOurPrice, decimalPlaces: 2), fontSize: bodyFontSize),
+              buildSummaryRow(l10n.subtotal, Formatters.number(grossStandardTotal > 0 ? grossStandardTotal : subtotalOurPrice, decimalPlaces: 2), fontSize: bodyFontSize),
               if (showDiscount && totalDiscount > 0) ...[
                 pw.SizedBox(height: 1.0),
-                buildSummaryRow(l10n.profit, '-${Formatters.number(totalDiscount, decimalPlaces: 2)}', fontSize: bodyFontSize),
-                pw.SizedBox(height: 1.0),
-                buildSummaryRow(l10n.totalProfit, Formatters.number(totalDiscount, decimalPlaces: 2), fontSize: bodyFontSize, isBold: true),
+                buildSummaryRow(l10n.profit, Formatters.number(totalDiscount, decimalPlaces: 2), fontSize: bodyFontSize, isBold: true),
               ],
+              pw.SizedBox(height: 1.0),
+              buildSummaryRow(l10n.returns, '0.00', fontSize: bodyFontSize),
+
               if (showTax && sale.tax > 0) ...[
                 pw.SizedBox(height: 1.0),
                 buildSummaryRow(l10n.tax, Formatters.number(sale.tax, decimalPlaces: 2), fontSize: bodyFontSize),
@@ -529,16 +664,15 @@ class PdfService {
                 pw.SizedBox(height: 1.0),
                 buildSummaryRow(l10n.merchantProfit, Formatters.number(totalMerchantProfit, decimalPlaces: 2), fontSize: smallFontSize, color: PdfColors.grey700),
               ],
-              pw.Divider(thickness: 0.6, height: 4),
 
-              // ── 6. PROMINENT GRAND TOTAL BOX ──
+              // ── 6. PROMINENT GRAND TOTAL BOX WITH DASHED BORDERS ──
               pw.Container(
                 margin: const pw.EdgeInsets.symmetric(vertical: 2.0),
-                padding: const pw.EdgeInsets.symmetric(vertical: 3.0, horizontal: 1.0),
+                padding: const pw.EdgeInsets.symmetric(vertical: 3.5, horizontal: 1.0),
                 decoration: const pw.BoxDecoration(
                   border: pw.Border(
-                    top: pw.BorderSide(width: 1.2, color: PdfColors.black),
-                    bottom: pw.BorderSide(width: 1.2, color: PdfColors.black),
+                    top: pw.BorderSide(style: pw.BorderStyle.dashed, width: 1.2, color: PdfColors.black),
+                    bottom: pw.BorderSide(style: pw.BorderStyle.dashed, width: 1.2, color: PdfColors.black),
                   ),
                 ),
                 child: pw.Row(
@@ -549,7 +683,7 @@ class PdfService {
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: totalFontSize),
                     ),
                     pw.Text(
-                      Formatters.currency(sale.total),
+                      Formatters.number(sale.total, decimalPlaces: 2),
                       style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: totalFontSize),
                     ),
                   ],
@@ -559,29 +693,37 @@ class PdfService {
               // ── 7. PAYMENT DETAILS ──
               if (showPaymentDetails) ...[
                 pw.SizedBox(height: 1.0),
-                buildSummaryRow(l10n.paymentMethod, sale.paymentMethod.toUpperCase(), fontSize: bodyFontSize),
-                if (effectiveCashReceived != null) ...[
-                  pw.SizedBox(height: 1.0),
-                  buildSummaryRow(l10n.cashReceived, Formatters.number(effectiveCashReceived, decimalPlaces: 2), fontSize: bodyFontSize),
-                  pw.SizedBox(height: 1.0),
-                  buildSummaryRow(l10n.change, Formatters.number(effectiveChange ?? 0.0, decimalPlaces: 2), fontSize: bodyFontSize, isBold: true),
-                ],
-                if (remainingAmt > 0) ...[
-                  pw.SizedBox(height: 1.0),
-                  buildSummaryRow(l10n.remainingAmount, Formatters.number(remainingAmt, decimalPlaces: 2), fontSize: bodyFontSize, isBold: true),
-                ],
-                pw.Divider(thickness: 0.6, height: 4),
+                buildSummaryRow(
+                  '${l10n.cash} :',
+                  sale.paymentMethod.toLowerCase() == 'cash'
+                      ? Formatters.number(effectiveCashReceived ?? sale.total, decimalPlaces: 2)
+                      : '0.00',
+                  fontSize: bodyFontSize,
+                ),
+                pw.SizedBox(height: 1.0),
+                buildSummaryRow(
+                  '${l10n.card} :',
+                  sale.paymentMethod.toLowerCase() == 'card'
+                      ? Formatters.number(sale.total, decimalPlaces: 2)
+                      : '0.00',
+                  fontSize: bodyFontSize,
+                ),
+                pw.SizedBox(height: 1.0),
+                buildSummaryRow(
+                  '${l10n.remainingAmount} :',
+                  Formatters.number(effectiveChange ?? 0.0, decimalPlaces: 2),
+                  fontSize: bodyFontSize,
+                  isBold: true,
+                ),
               ],
-
-              // ── 8. ITEM COUNT & QUANTITY ──
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text('${l10n.itemsCount}: ${items.length}', style: pw.TextStyle(fontSize: smallFontSize, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('${l10n.totalQuantity}: ${totalPieces(items)}', style: pw.TextStyle(fontSize: smallFontSize)),
-                ],
+              pw.SizedBox(height: 1.0),
+              buildSummaryRow(
+                '${l10n.itemsCount} :',
+                '${items.length}',
+                fontSize: bodyFontSize,
+                isBold: true,
               ),
-              pw.Divider(thickness: 0.6, height: 4),
+              buildDashedDivider(height: 4, thickness: 0.8),
 
               // ── 9. FOOTER & BARCODE ──
               pw.SizedBox(height: 2),
@@ -612,7 +754,8 @@ class PdfService {
                           width: is58mm ? 105 : 135,
                           height: is58mm ? 22 : 26,
                           drawText: true,
-                          textStyle: pw.Theme.of(context).defaultTextStyle.copyWith(
+                          textStyle: pw.TextStyle(
+                            font: pw.Font.helveticaBold(),
                             fontSize: smallFontSize,
                             fontWeight: pw.FontWeight.bold,
                           ),
@@ -1154,7 +1297,8 @@ class PdfService {
                           width: is58mm ? 105 : 135,
                           height: is58mm ? 22 : 26,
                           drawText: true,
-                          textStyle: pw.Theme.of(context).defaultTextStyle.copyWith(
+                          textStyle: pw.TextStyle(
+                            font: pw.Font.helveticaBold(),
                             fontSize: smallFontSize,
                             fontWeight: pw.FontWeight.bold,
                           ),

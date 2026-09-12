@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import '../models/sale.dart';
@@ -13,6 +12,8 @@ import '../utils/formatters.dart';
 import '../providers/preference_provider.dart';
 import 'pdf_service.dart';
 import 'sinhala_search_service.dart';
+import 'receipt_image_generator.dart';
+import 'receipt_raster_converter.dart';
 import 'package:intl/intl.dart';
 
 class PrinterTestResult {
@@ -157,14 +158,31 @@ class PrintingService {
     double? change,
   }) async {
     try {
-      final doc = await PdfService.instance.buildReceiptDocument(
-        sale,
-        items,
-        settings: settings,
-        cashReceived: cashReceived,
-        change: change,
-      );
-      final pdfBytes = await doc.save();
+      Uint8List pdfBytes;
+      if (containsSinhala(sale, items, settings)) {
+        // Render via Flutter high-resolution offscreen widget for 100% Sinhala Unicode shaping
+        final pngBytes = await ReceiptImageGenerator.instance.generateReceiptImage(
+          sale: sale,
+          items: items,
+          settings: settings,
+          cashReceived: cashReceived,
+          change: change,
+        );
+        final doc = await PdfService.instance.buildImageReceiptDocument(
+          pngBytes,
+          is58mm: settings.is58mm,
+        );
+        pdfBytes = await doc.save();
+      } else {
+        final doc = await PdfService.instance.buildReceiptDocument(
+          sale,
+          items,
+          settings: settings,
+          cashReceived: cashReceived,
+          change: change,
+        );
+        pdfBytes = await doc.save();
+      }
 
       if (settings.selectedPrinterName != null && settings.selectedPrinterName!.isNotEmpty) {
         final printers = await Printing.listPrinters();
@@ -209,21 +227,20 @@ class PrintingService {
 
       socket = await Socket.connect(ip, port, timeout: const Duration(seconds: 4));
 
-      final doc = await PdfService.instance.buildReceiptDocument(
-        sale,
-        items,
+      final int targetWidth = settings.is58mm ? 384 : 576;
+      final pngBytes = await ReceiptImageGenerator.instance.generateReceiptImage(
+        sale: sale,
+        items: items,
         settings: settings,
         cashReceived: cashReceived,
         change: change,
       );
-      final pdfBytes = await doc.save();
 
-      // Convert PDF to 203 DPI PNG bitmap
-      await for (final page in Printing.raster(pdfBytes, pages: [0], dpi: 203)) {
-        final pngBytes = await page.toPng();
-        final escPosBytes = _convertPngToEscPosRaster(pngBytes);
-        socket.add(escPosBytes);
-      }
+      final escPosBytes = ReceiptRasterConverter.instance.convertPngToEscPosRaster(
+        pngBytes,
+        targetWidth: targetWidth,
+      );
+      socket.add(escPosBytes);
 
       await socket.flush();
       await Future.delayed(const Duration(milliseconds: 300));
@@ -233,10 +250,10 @@ class PrintingService {
       try {
         await socket?.close();
       } catch (_) {}
-      await PdfService.instance.generateReceipt(
+      await printDesktopReceipt(
         sale,
         items,
-        settings: settings,
+        settings,
         cashReceived: cashReceived,
         change: change,
       );
@@ -289,14 +306,18 @@ class PrintingService {
         printerPaperSize: paperSize,
       );
 
-      final doc = await PdfService.instance.buildReceiptDocument(testSale, testItems, settings: testSettings);
-      final pdfBytes = await doc.save();
+      final int targetWidth = paperSize == '58mm' ? 384 : 576;
+      final pngBytes = await ReceiptImageGenerator.instance.generateReceiptImage(
+        sale: testSale,
+        items: testItems,
+        settings: testSettings,
+      );
 
-      await for (final page in Printing.raster(pdfBytes, pages: [0], dpi: 203)) {
-        final pngBytes = await page.toPng();
-        final escPosBytes = _convertPngToEscPosRaster(pngBytes);
-        socket.add(escPosBytes);
-      }
+      final escPosBytes = ReceiptRasterConverter.instance.convertPngToEscPosRaster(
+        pngBytes,
+        targetWidth: targetWidth,
+      );
+      socket.add(escPosBytes);
 
       await socket.flush();
       await Future.delayed(const Duration(milliseconds: 300));
@@ -315,61 +336,6 @@ class PrintingService {
         message: 'Failed to connect to printer at $ip:$port ($e). Please verify IP & Wi-Fi connection.',
       );
     }
-  }
-
-  /// Converts PNG bytes to 1-bit monochrome ESC/POS raster bitmap command (`GS v 0`)
-  List<int> _convertPngToEscPosRaster(Uint8List pngBytes) {
-    final image = img.decodeImage(pngBytes);
-    if (image == null) return [];
-
-    final int width = image.width;
-    final int height = image.height;
-    final int widthBytes = (width + 7) ~/ 8;
-
-    final List<int> bytes = [];
-
-    // Initialize printer: ESC @ (0x1B, 0x40)
-    bytes.addAll([0x1B, 0x40]);
-
-    // Set line spacing to 0: ESC 3 0 (0x1B, 0x33, 0x00)
-    bytes.addAll([0x1B, 0x33, 0x00]);
-
-    // ESC/POS raster bitmap command: GS v 0 0 xL xH yL yH d1...dk
-    final int xL = widthBytes % 256;
-    final int xH = widthBytes ~/ 256;
-    final int yL = height % 256;
-    final int yH = height ~/ 256;
-
-    bytes.addAll([0x1D, 0x76, 0x30, 0x00, xL, xH, yL, yH]);
-
-    for (int y = 0; y < height; y++) {
-      for (int xByte = 0; xByte < widthBytes; xByte++) {
-        int byteVal = 0;
-        for (int bit = 0; bit < 8; bit++) {
-          final int x = xByte * 8 + bit;
-          if (x < width) {
-            final pixel = image.getPixel(x, y);
-            final lum = img.getLuminance(pixel);
-            // In ESC/POS raster: 1 = Black dot, 0 = White dot
-            if (lum < 160) {
-              byteVal |= (1 << (7 - bit));
-            }
-          }
-        }
-        bytes.add(byteVal);
-      }
-    }
-
-    // Reset line spacing: ESC 2 (0x1B, 0x32)
-    bytes.addAll([0x1B, 0x32]);
-
-    // Feed paper: ESC d 4 (0x1B, 0x64, 0x04)
-    bytes.addAll([0x1B, 0x64, 0x04]);
-
-    // Partial paper cut: GS V 66 0 (0x1D, 0x56, 0x42, 0x00)
-    bytes.addAll([0x1D, 0x56, 0x42, 0x00]);
-
-    return bytes;
   }
 
   // ==========================================
@@ -404,26 +370,40 @@ class PrintingService {
     double? change,
   }) async {
     try {
-      final doc = await PdfService.instance.buildReceiptDocument(
-        sale,
-        items,
+      final int targetWidth = settings.is58mm ? 384 : 576;
+      final pngBytes = await ReceiptImageGenerator.instance.generateReceiptImage(
+        sale: sale,
+        items: items,
         settings: settings,
         cashReceived: cashReceived,
         change: change,
       );
-      final pdfBytes = await doc.save();
-      final tempDir = await getTemporaryDirectory();
 
-      await for (final page in Printing.raster(pdfBytes, pages: [0], dpi: 203)) {
-        final pngBytes = await page.toPng();
-        final tempFile = File('${tempDir.path}/rcpt_${DateTime.now().millisecondsSinceEpoch}.png');
-        await tempFile.writeAsBytes(pngBytes);
+      final monoPng = ReceiptRasterConverter.instance.convertToMonochromePng(
+        pngBytes,
+        targetWidth: targetWidth,
+      );
+
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/rcpt_${DateTime.now().millisecondsSinceEpoch}.png');
+      await tempFile.writeAsBytes(monoPng);
+
+      try {
         await _bluetooth.printImage(tempFile.path);
-        await Future.delayed(const Duration(milliseconds: 200));
-        try {
-          await tempFile.delete();
-        } catch (_) {}
+      } catch (btErr) {
+        debugPrint('Bluetooth printImage failed ($btErr). Attempting writeBytes ESC/POS raster fallback.');
+        final escPosRaster = ReceiptRasterConverter.instance.convertPngToEscPosRaster(
+          pngBytes,
+          targetWidth: targetWidth,
+        );
+        await _bluetooth.writeBytes(Uint8List.fromList(escPosRaster));
       }
+
+      await Future.delayed(const Duration(milliseconds: 300));
+      try {
+        await tempFile.delete();
+      } catch (_) {}
+
       await _bluetooth.write('\n\n\n');
       await _bluetooth.paperCut();
     } catch (e) {

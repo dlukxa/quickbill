@@ -13,6 +13,7 @@ import '../../services/printing_service.dart';
 import '../../utils/formatters.dart';
 import '../../utils/pos_l10n.dart';
 import '../returns/process_return_screen.dart';
+import '../../widgets/receipt/receipt_preview_dialog.dart';
 
 class DesktopSalesView extends ConsumerStatefulWidget {
   const DesktopSalesView({super.key});
@@ -524,6 +525,19 @@ class _DesktopSalesViewState extends ConsumerState<DesktopSalesView> {
                                               debugPrint('Print error: $e');
                                             }
                                           },
+                                        ),
+                                        OutlinedButton.icon(
+                                          style: OutlinedButton.styleFrom(
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          ),
+                                          icon: const Icon(Icons.preview_rounded, size: 16),
+                                          label: const Text('Preview'),
+                                          onPressed: () => ReceiptPreviewDialog.show(
+                                            context,
+                                            sale: _selectedSale!,
+                                            items: _selectedItems,
+                                            settings: settings,
+                                          ),
                                         ),
                                         OutlinedButton.icon(
                                           style: OutlinedButton.styleFrom(

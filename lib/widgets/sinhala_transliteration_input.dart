@@ -375,12 +375,16 @@ class _SinglishTextFieldState extends State<SinglishTextField> {
         isDark: isDark,
       );
       if (effectiveSuffix != null) {
-        effectiveSuffix = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            badge,
-            effectiveSuffix,
-          ],
+        effectiveSuffix = FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerRight,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              badge,
+              effectiveSuffix,
+            ],
+          ),
         );
       } else {
         effectiveSuffix = badge;
@@ -390,7 +394,11 @@ class _SinglishTextFieldState extends State<SinglishTextField> {
     final textField = TextField(
       controller: widget.controller,
       focusNode: _focusNode,
-      decoration: widget.decoration.copyWith(suffixIcon: effectiveSuffix),
+      decoration: widget.decoration.copyWith(
+        suffixIcon: effectiveSuffix,
+        suffixIconConstraints: widget.decoration.suffixIconConstraints ??
+            const BoxConstraints(minWidth: 40, maxWidth: 120, minHeight: 36, maxHeight: 48),
+      ),
       keyboardType: widget.keyboardType,
       textInputAction: widget.textInputAction,
       onChanged: widget.onChanged,

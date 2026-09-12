@@ -2291,9 +2291,34 @@ class DatabaseService {
           whereArgs: [cartItem.product!.id]
         );
         
-        final trackBatches = productParams.isNotEmpty && (productParams.first['track_batches'] as int) == 1;
+        if (productParams.isEmpty) {
+          // Product not found in products table (e.g. ad-hoc item or removed product).
+          // Fall back gracefully using placeholder product 999999999 so foreign key constraints are not violated.
+          await txn.execute('''
+            INSERT OR IGNORE INTO products 
+            (id, branch_id, name, price, created_at, updated_at, deleted, synced) 
+            VALUES 
+            (999999999, 1, 'System Service Placeholder', 0, '${DateTime.now().toIso8601String()}', '${DateTime.now().toIso8601String()}', 1, 1)
+          ''');
+
+          final saleItem = SaleItem(
+            saleId: saleId,
+            productId: 999999999,
+            itemType: cartItem.itemType,
+            productName: cartItem.itemName,
+            quantity: cartItem.quantity,
+            unitPrice: cartItem.itemPrice,
+            total: cartItem.total,
+            costPrice: cartItem.product?.costPrice ?? 0.0,
+            discount: cartItem.discount,
+          );
+          await _insertWithId(txn, 'sale_items', saleItem.toMap());
+          continue;
+        }
+
+        final trackBatches = (productParams.first['track_batches'] as int?) == 1;
         final double fallbackCost = (productParams.first['cost_price'] as num?)?.toDouble() ?? 0.0;
-        final String productType = productParams.isNotEmpty ? ((productParams.first['type'] as String?) ?? 'product') : 'product';
+        final String productType = (productParams.first['type'] as String?) ?? 'product';
 
         if (productType == 'service') {
           final saleItem = SaleItem(

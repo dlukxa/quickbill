@@ -12,6 +12,8 @@
 .swiftpm/
 migrate_working_dir/
 .gemini/
+test_receipt_*.png
+*.qlpreview/
 
 # IntelliJ related
 *.iml

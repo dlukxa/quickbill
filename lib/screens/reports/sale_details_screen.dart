@@ -8,6 +8,7 @@ import '../../providers/preference_provider.dart';
 import '../../services/pdf_service.dart';
 import '../../services/share_service.dart';
 import '../../services/printing_service.dart';
+import '../../widgets/receipt/receipt_preview_dialog.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/app_card.dart';
 import '../returns/process_return_screen.dart';
@@ -98,14 +99,14 @@ class SaleDetailsScreen extends ConsumerWidget {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () async {
-                      await PdfService.instance.generateReceipt(sale, sale.items, settings: settings);
-                      if (await PrintingService.instance.isConnected()) {
-                        await PrintingService.instance.printReceipt(sale, sale.items, settings);
-                      }
-                    },
+                    onPressed: () => ReceiptPreviewDialog.show(
+                      context,
+                      sale: sale,
+                      items: sale.items,
+                      settings: settings,
+                    ),
                     icon: const Icon(Icons.print),
-                    label: Text(l10n.receipt80mm),
+                    label: Text(settings.is58mm ? 'Receipt (58mm)' : 'Receipt (80mm)'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),

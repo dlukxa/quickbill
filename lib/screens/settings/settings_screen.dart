@@ -28,6 +28,7 @@ import 'package:printing/printing.dart';
 import '../../services/cash_drawer_service.dart';
 import '../../services/pdf_service.dart';
 import '../../models/sale.dart';
+import '../../widgets/receipt/receipt_preview_dialog.dart';
 import '../../models/sale_item.dart';
 import '../../generated/l10n/app_localizations.dart';
 import 'bluetooth_scanner_settings_screen.dart' as bluetooth_scanner_settings_screen;
@@ -2092,50 +2093,68 @@ class _ReceiptSettingsPage extends ConsumerWidget {
   Future<void> _previewReceipt(BuildContext context, AppSettings settings) async {
     final sampleSale = Sale(
       billNumber: 'INV000001',
-      total: 145.0,
-      discount: 5.0,
-      itemsCount: 1,
+      total: 1450.0,
+      discount: 50.0,
+      itemsCount: 4,
       paymentMethod: 'cash',
       cashierName: 'Harshana',
       customerName: 'Kusal Mendis',
       customerPhone: '077 123 4567',
       createdAt: DateTime.now(),
-      notes: 'Cash: 200.00\nChange: 55.00',
+      notes: 'Cash: 1500.00\nChange: 50.00',
     );
 
     final sampleItems = [
       SaleItem(
         saleId: 0,
-        productId: 0,
-        productName: 'කිරි තේ (Milk Tea)',
+        productId: 1,
+        productName: 'ප්රීමා වෙජිටබල් ඔයිල් මිලි ලීටර් 100',
         quantity: 1,
-        unitPrice: 150.0,
-        costPrice: 85.0,
-        discount: 5.0,
-        total: 145.0,
+        unitPrice: 420.0,
+        costPrice: 380.0,
+        discount: 20.0,
+        total: 400.0,
+      ),
+      SaleItem(
+        saleId: 0,
+        productId: 2,
+        productName: 'Egg Yellow food colour 28ml',
+        quantity: 2,
+        unitPrice: 125.0,
+        costPrice: 90.0,
+        discount: 0.0,
+        total: 250.0,
+      ),
+      SaleItem(
+        saleId: 0,
+        productId: 3,
+        productName: 'කිරිපිටි',
+        quantity: 1,
+        unitPrice: 480.0,
+        costPrice: 420.0,
+        discount: 30.0,
+        total: 450.0,
+      ),
+      SaleItem(
+        saleId: 0,
+        productId: 4,
+        productName: 'Rice 5kg',
+        quantity: 1,
+        unitPrice: 350.0,
+        costPrice: 300.0,
+        discount: 0.0,
+        total: 350.0,
       ),
     ];
 
-    try {
-      final doc = await PdfService.instance.buildReceiptDocument(
-        sampleSale,
-        sampleItems,
-        settings: settings,
-        cashReceived: 200.0,
-        change: 55.0,
-      );
-
-      await Printing.layoutPdf(
-        onLayout: (format) async => doc.save(),
-        name: 'QuickBill_Receipt_Preview',
-      );
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Preview error: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
+    await ReceiptPreviewDialog.show(
+      context,
+      sale: sampleSale,
+      items: sampleItems,
+      settings: settings,
+      cashReceived: 1500.0,
+      change: 50.0,
+    );
   }
 
   @override

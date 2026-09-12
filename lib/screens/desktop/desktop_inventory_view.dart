@@ -320,20 +320,23 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                       const SizedBox(width: 14),
 
                       // Status Segmented Filter
-                      SegmentedButton<String>(
-                        segments: [
-                          ButtonSegment(value: 'all', label: Text(posL10n.allItems)),
-                          ButtonSegment(
-                            value: 'low',
-                            label: Text('${posL10n.lowStock} (${lowStockList.length})'),
-                          ),
-                          ButtonSegment(
-                            value: 'out',
-                            label: Text('${posL10n.outOfStock} (${outOfStockList.length})'),
-                          ),
-                        ],
-                        selected: {_statusFilter},
-                        onSelectionChanged: (set) => setState(() => _statusFilter = set.first),
+                      Expanded(
+                        flex: 3,
+                        child: SegmentedButton<String>(
+                          segments: [
+                            ButtonSegment(value: 'all', label: Text(posL10n.allItems, overflow: TextOverflow.ellipsis)),
+                            ButtonSegment(
+                              value: 'low',
+                              label: Text('${posL10n.lowStock} (${lowStockList.length})', overflow: TextOverflow.ellipsis),
+                            ),
+                            ButtonSegment(
+                              value: 'out',
+                              label: Text('${posL10n.outOfStock} (${outOfStockList.length})', overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                          selected: {_statusFilter},
+                          onSelectionChanged: (set) => setState(() => _statusFilter = set.first),
+                        ),
                       ),
                     ],
                   ),

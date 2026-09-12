@@ -6,7 +6,6 @@ import '../../providers/employee_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
 import '../auth/profile_picker_screen.dart';
-import 'desktop_pos_screen.dart';
 import 'desktop_qr_link_screen.dart';
 import 'desktop_shell.dart';
 

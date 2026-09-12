@@ -8,7 +8,6 @@ import '../../models/product_batch.dart';
 import '../../providers/product_provider.dart';
 import '../../utils/formatters.dart';
 import '../../generated/l10n/app_localizations.dart';
-import '../../generated/l10n/app_localizations_en.dart';
 
 class BatchSelectionSheet extends ConsumerStatefulWidget {
   final Product product;
@@ -39,7 +38,6 @@ class _BatchSelectionSheetState extends ConsumerState<BatchSelectionSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context) ?? AppLocalizationsEn();
     final isDark = context.isDark;
 
     final sheetBg = isDark ? const Color(0xFF1E1E2E) : Colors.white;

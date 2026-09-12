@@ -28,9 +28,9 @@ import '../../models/sale.dart';
 import '../../providers/customer_provider.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/cached_product_image.dart';
+import '../../widgets/receipt/receipt_preview_dialog.dart';
 import '../billing/quick_item_sheet.dart';
 import '../customers/customer_list_screen.dart';
-import '../reports/analytics_dashboard_screen.dart';
 import '../reports/reports_screen.dart';
 import '../reports/sales_report_screen.dart';
 import '../reports/expense_management_screen.dart';
@@ -52,6 +52,7 @@ import '../suppliers/purchase_management_screen.dart';
 import '../returns/sales_history_screen.dart';
 import 'dart:async';
 import '../../services/pos_barcode_service.dart';
+import '../../providers/desktop_nav_provider.dart';
 import '../discount/discount_list_screen.dart';
 import '../../utils/pos_l10n.dart';
 import '../ai/ai_assistant_screen.dart';
@@ -351,17 +352,11 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
       builder: (_) => _QuickCustomItemDialog(
         isDark: ref.watch(settingsProvider).isDarkMode,
         onAdd: (name, price, qty) {
-          final dummyProduct = Product(
-            id: -DateTime.now().millisecondsSinceEpoch,
+          ref.read(cartProvider.notifier).addQuickItem(
             name: name,
             price: price,
-            stock: 9999,
-            minStock: 0,
-            unit: 'item',
-            type: 'product',
-            trackBatches: false,
+            quantity: qty,
           );
-          ref.read(cartProvider.notifier).addProduct(dummyProduct, quantity: qty);
           _showBarcodeSnack('✓ Added "$name" (${qty.toInt()}x Rs. ${price.toStringAsFixed(2)}) to cart');
         },
       ),
@@ -878,6 +873,29 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
       ),
       child: Row(
         children: [
+          // Sidebar Toggle Button on Desktop
+          Tooltip(
+            message: ref.watch(desktopSidebarCollapsedProvider)
+                ? '${l10n.expandSidebar} (Ctrl+[)'
+                : '${l10n.collapseSidebar} (Ctrl+[)',
+            child: IconButton(
+              icon: Icon(
+                ref.watch(desktopSidebarCollapsedProvider)
+                    ? Icons.menu_rounded
+                    : Icons.menu_open_rounded,
+                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                size: 22,
+              ),
+              splashRadius: 20,
+              onPressed: () {
+                final current = ref.read(desktopSidebarCollapsedProvider);
+                ref.read(desktopSidebarCollapsedProvider.notifier).state = !current;
+                SharedPreferences.getInstance().then((p) => p.setBool('desktop_sidebar_collapsed', !current));
+              },
+            ),
+          ),
+          const SizedBox(width: 4),
+
           // Store Branding & Logo Container with Shop Name
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -1012,8 +1030,7 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                     icon: Icons.receipt_long_rounded,
                     label: l10n.billHistory,
                     isDark: isDark,
-                    onTap: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const SalesReportScreen())),
+                    onTap: () => ref.read(desktopNavIndexProvider.notifier).state = 3,
                   ),
                   const SizedBox(width: 4),
 
@@ -1022,8 +1039,7 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                       icon: Icons.dashboard_rounded,
                       label: l10n.dashboard,
                       isDark: isDark,
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const AnalyticsDashboardScreen())),
+                      onTap: () => ref.read(desktopNavIndexProvider.notifier).state = 1,
                     ),
                     const SizedBox(width: 4),
                     _TopBarButton(
@@ -1080,8 +1096,7 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                     icon: Icons.people_alt_rounded,
                     label: l10n.customers,
                     isDark: isDark,
-                    onTap: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const CustomerListScreen())),
+                    onTap: () => ref.read(desktopNavIndexProvider.notifier).state = 4,
                   ),
                   const SizedBox(width: 4),
 
@@ -3567,6 +3582,21 @@ void _showPostSaleDialog(
                   debugPrint('Error printing receipt: $e');
                 }
               },
+            ),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              icon: const Icon(Icons.preview_rounded, size: 18),
+              label: const Text('Preview Receipt'),
+              onPressed: () => ReceiptPreviewDialog.show(
+                ctx,
+                sale: sale,
+                items: buildSaleItems(),
+                settings: settings,
+                cashReceived: effectiveCashReceived,
+                change: change,
+              ),
             ),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
