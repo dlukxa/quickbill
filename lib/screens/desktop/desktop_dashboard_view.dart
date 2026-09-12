@@ -105,10 +105,10 @@ class DesktopDashboardView extends ConsumerWidget {
               // ── 1. KPI Top Cards ──
               todayStatsAsync.when(
                 data: (stats) {
-                  final totalRevenue = (stats['totalSales'] as num?)?.toDouble() ?? 0.0;
-                  final totalInvoices = (stats['totalOrders'] as num?)?.toInt() ?? 0;
-                  final totalProfit = (stats['totalProfit'] as num?)?.toDouble() ?? 0.0;
-                  final avgOrder = totalInvoices > 0 ? totalRevenue / totalInvoices : 0.0;
+                  final totalRevenue = (stats['totalSales'] as num?)?.toDouble() ?? (stats['total_sales'] as num?)?.toDouble() ?? 0.0;
+                  final totalInvoices = (stats['totalOrders'] as num?)?.toInt() ?? (stats['bill_count'] as num?)?.toInt() ?? 0;
+                  final totalProfit = (stats['totalProfit'] as num?)?.toDouble() ?? (stats['total_profit'] as num?)?.toDouble() ?? 0.0;
+                  final avgOrder = (stats['averageTicket'] as num?)?.toDouble() ?? (totalInvoices > 0 ? totalRevenue / totalInvoices : 0.0);
 
                   return Row(
                     children: [
@@ -221,17 +221,17 @@ class DesktopDashboardView extends ConsumerWidget {
                                 );
                               }
 
-                              // Group sales by 2-hour slots: 8-10, 10-12, 12-14, 14-16, 16-18, 18-20, 20-22
+                              // Group sales by 2-hour slots: <10, 10-12, 12-14, 14-16, 16-18, 18-20, 20+
                               final slots = List.generate(7, (_) => 0.0);
                               for (final s in sales) {
                                 final hour = s.createdAt.hour;
-                                if (hour >= 8 && hour < 10) slots[0] += s.total;
-                                else if (hour >= 10 && hour < 12) slots[1] += s.total;
-                                else if (hour >= 12 && hour < 14) slots[2] += s.total;
-                                else if (hour >= 14 && hour < 16) slots[3] += s.total;
-                                else if (hour >= 16 && hour < 18) slots[4] += s.total;
-                                else if (hour >= 18 && hour < 20) slots[5] += s.total;
-                                else if (hour >= 20) slots[6] += s.total;
+                                if (hour < 10) slots[0] += s.total;
+                                else if (hour < 12) slots[1] += s.total;
+                                else if (hour < 14) slots[2] += s.total;
+                                else if (hour < 16) slots[3] += s.total;
+                                else if (hour < 18) slots[4] += s.total;
+                                else if (hour < 20) slots[5] += s.total;
+                                else slots[6] += s.total;
                               }
 
                               final maxVal = slots.fold(100.0, (m, v) => v > m ? v : m);
@@ -258,7 +258,7 @@ class DesktopDashboardView extends ConsumerWidget {
                                         sideTitles: SideTitles(
                                           showTitles: true,
                                           getTitlesWidget: (val, meta) {
-                                            const labels = ['8am', '10am', '12pm', '2pm', '4pm', '6pm', '8pm+'];
+                                            const labels = ['<10am', '10am', '12pm', '2pm', '4pm', '6pm', '8pm+'];
                                             final idx = val.toInt();
                                             if (idx >= 0 && idx < labels.length) {
                                               return Padding(
@@ -462,8 +462,8 @@ class DesktopDashboardView extends ConsumerWidget {
                               final idx = entry.key + 1;
                               final item = entry.value;
                               final name = item['product_name'] ?? item['name'] ?? 'Unknown Item';
-                              final qty = (item['total_quantity'] as num?)?.toDouble() ?? 0.0;
-                              final rev = (item['total_sales'] as num?)?.toDouble() ?? 0.0;
+                              final qty = ((item['total_quantity'] ?? item['total_qty']) as num?)?.toDouble() ?? 0.0;
+                              final rev = ((item['total_sales'] ?? item['totalSales']) as num?)?.toDouble() ?? 0.0;
 
                               return TableRow(
                                 decoration: BoxDecoration(

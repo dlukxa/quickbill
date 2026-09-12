@@ -105,6 +105,9 @@ class SaleActions {
     ref.invalidate(categorySalesProvider);
     ref.invalidate(inventoryAlertsProvider);
     ref.invalidate(summaryProfitabilityProvider);
+    ref.invalidate(topProductsProvider);
+    ref.invalidate(topCustomersProvider);
+    ref.invalidate(profitLossProvider);
 
     return sale.copyWith(id: saleId);
   }

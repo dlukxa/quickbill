@@ -115,8 +115,12 @@ class _ProcessReturnScreenState extends ConsumerState<ProcessReturnScreen> {
       // Refresh reports and history
       ref.invalidate(refundsProvider);
       ref.invalidate(recentSalesProvider);
+      ref.invalidate(salesProvider);
+      ref.invalidate(todaySalesProvider);
       ref.invalidate(salesChartProvider); // In case returns affect revenue
       ref.invalidate(todayStatsProvider); // CRITICAL for dashboard
+      ref.invalidate(profitLossProvider);
+      ref.invalidate(topProductsProvider);
       ref.invalidate(productsProvider); // Stock changed
       ref.invalidate(lowStockProductsProvider);
       ref.invalidate(inventoryAlertsProvider);

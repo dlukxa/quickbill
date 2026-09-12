@@ -2596,8 +2596,8 @@ class DatabaseService {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'sales',
-      where: 'branch_id = ? AND deleted = ?',
-      whereArgs: [branchId, 0],
+      where: '(branch_id = ? OR ? = 0) AND deleted = ?',
+      whereArgs: [branchId, branchId, 0],
       orderBy: 'created_at DESC',
     );
     return await _attachItemsToSales(maps);
@@ -2671,8 +2671,8 @@ class DatabaseService {
     
     final List<Map<String, dynamic>> maps = await db.query(
       'sales',
-      where: 'branch_id = ? AND deleted = ? AND created_at >= ?',
-      whereArgs: [branchId, 0, startOfDay],
+      where: '(branch_id = ? OR ? = 0) AND deleted = ? AND created_at >= ?',
+      whereArgs: [branchId, branchId, 0, startOfDay],
       orderBy: 'created_at DESC',
     );
     return await _attachItemsToSales(maps);
@@ -2682,8 +2682,8 @@ class DatabaseService {
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'sales',
-      where: 'branch_id = ? AND deleted = ? AND created_at BETWEEN ? AND ?',
-      whereArgs: [branchId, 0, start.toIso8601String(), end.toIso8601String()],
+      where: '(branch_id = ? OR ? = 0) AND deleted = ? AND created_at BETWEEN ? AND ?',
+      whereArgs: [branchId, branchId, 0, start.toIso8601String(), end.toIso8601String()],
       orderBy: 'created_at DESC',
     );
     return await _attachItemsToSales(maps);
@@ -2702,36 +2702,77 @@ class DatabaseService {
         COALESCE(SUM(discount), 0) as bill_discounts,
         COALESCE(AVG(total), 0) as avg_bill
       FROM sales
-      WHERE branch_id = ? AND deleted = 0 AND created_at >= ?
-    ''', [branchId, startOfDay]);
+      WHERE (branch_id = ? OR ? = 0) AND deleted = 0 AND created_at >= ?
+    ''', [branchId, branchId, startOfDay]);
 
     // 2. Get item-level discounts
     final itemDiscountsResult = await db.rawQuery('''
       SELECT COALESCE(SUM(si.discount), 0) as item_discounts
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id
-      WHERE s.branch_id = ? AND s.deleted = 0 AND s.created_at >= ?
-    ''', [branchId, startOfDay]);
+      WHERE (s.branch_id = ? OR ? = 0) AND s.deleted = 0 AND s.created_at >= ?
+    ''', [branchId, branchId, startOfDay]);
 
     // 3. Get today's refunds
     final refundsResult = await db.rawQuery('''
       SELECT COALESCE(SUM(refund_amount), 0) as total_refunds
       FROM sales_returns
-      WHERE branch_id = ? AND return_date >= ?
-    ''', [branchId, startOfDay]);
+      WHERE (branch_id = ? OR ? = 0) AND return_date >= ?
+    ''', [branchId, branchId, startOfDay]);
+
+    // 4. Get COGS (Cost of Goods Sold) for today's sales
+    final cogsResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(COALESCE(si.cost_price, 0) * si.quantity), 0) as cogs
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      WHERE (s.branch_id = ? OR ? = 0) AND s.deleted = 0 AND s.created_at >= ?
+    ''', [branchId, branchId, startOfDay]);
+
+    // 5. Restockable returns cogs to offset
+    final restockableCostResult = await db.rawQuery('''
+      SELECT COALESCE(SUM(COALESCE(p.cost_price, 0) * sri.quantity), 0) as restock_cogs
+      FROM sales_return_items sri
+      JOIN products p ON sri.product_id = p.id
+      JOIN sales_returns sr ON sri.return_id = sr.id
+      WHERE (sr.branch_id = ? OR ? = 0) AND sr.return_date >= ?
+        AND sri.condition = 'restockable'
+    ''', [branchId, branchId, startOfDay]);
 
     final salesData = Map<String, dynamic>.from(salesResult.first);
     final double rawSales = (salesData['total_sales'] as num?)?.toDouble() ?? 0.0;
     final double billDiscounts = (salesData['bill_discounts'] as num?)?.toDouble() ?? 0.0;
     final double itemDiscounts = (itemDiscountsResult.first['item_discounts'] as num?)?.toDouble() ?? 0.0;
     final double refunds = (refundsResult.first['total_refunds'] as num?)?.toDouble() ?? 0.0;
-    
-    final data = Map<String, dynamic>.from(salesData);
-    data['total_sales'] = rawSales - refunds;
-    data['total_discounts'] = billDiscounts + itemDiscounts;
-    data['avg_bill'] = (salesData['avg_bill'] as num?)?.toDouble() ?? 0.0;
-    data['bill_count'] = salesData['bill_count'] as int? ?? 0;
-    data['refunds'] = refunds;
+    final int billCount = (salesData['bill_count'] as num?)?.toInt() ?? 0;
+    final double rawCogs = (cogsResult.first['cogs'] as num?)?.toDouble() ?? 0.0;
+    final double restockCogs = (restockableCostResult.first['restock_cogs'] as num?)?.toDouble() ?? 0.0;
+    final double cogs = (rawCogs - restockCogs).clamp(0.0, double.infinity);
+
+    final double netSales = rawSales - refunds;
+    final double totalProfit = netSales - cogs;
+    final double avgBill = billCount > 0 ? (netSales / billCount) : 0.0;
+    final double totalDiscounts = billDiscounts + itemDiscounts;
+
+    final data = <String, dynamic>{
+      'total_sales': netSales,
+      'totalSales': netSales,
+      'gross_sales': rawSales,
+      'grossSales': rawSales,
+      'bill_count': billCount,
+      'totalOrders': billCount,
+      'total_orders': billCount,
+      'total_profit': totalProfit,
+      'totalProfit': totalProfit,
+      'gross_profit': totalProfit,
+      'grossProfit': totalProfit,
+      'avg_bill': avgBill,
+      'averageTicket': avgBill,
+      'avgTicket': avgBill,
+      'total_discounts': totalDiscounts,
+      'totalDiscounts': totalDiscounts,
+      'refunds': refunds,
+      'cogs': cogs,
+    };
 
     return data;
   }
@@ -4070,8 +4111,11 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
 
     return result.map((row) {
       final map = Map<String, dynamic>.from(row);
-      map['total_qty'] = (map['total_qty'] as num?)?.toInt() ?? 0;
+      final qty = (map['total_qty'] as num?)?.toDouble() ?? 0.0;
+      map['total_qty'] = qty;
+      map['total_quantity'] = qty;
       map['total_sales'] = (map['total_sales'] as num?)?.toDouble() ?? 0.0;
+      map['totalSales'] = map['total_sales'];
       return map;
     }).toList();
   }
@@ -4276,8 +4320,8 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'expenses',
-      where: 'branch_id = ? AND deleted = 0',
-      whereArgs: [branchId],
+      where: '(branch_id = ? OR ? = 0) AND deleted = 0',
+      whereArgs: [branchId, branchId],
       orderBy: 'date DESC',
     );
     return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
@@ -4287,8 +4331,8 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
     final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'expenses',
-      where: 'branch_id = ? AND deleted = 0 AND date BETWEEN ? AND ?',
-      whereArgs: [branchId, start.toIso8601String(), end.toIso8601String()],
+      where: '(branch_id = ? OR ? = 0) AND deleted = 0 AND date BETWEEN ? AND ?',
+      whereArgs: [branchId, branchId, start.toIso8601String(), end.toIso8601String()],
       orderBy: 'date DESC',
     );
     return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));

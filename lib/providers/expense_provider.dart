@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/expense.dart';
 import '../services/database_service.dart';
 import 'branch_provider.dart';
+import 'report_provider.dart';
 
 final expenseListProvider = StateNotifierProvider<ExpenseListNotifier, AsyncValue<List<Expense>>>((ref) {
   final branchId = ref.watch(currentBranchIdProvider);
@@ -13,6 +14,13 @@ class ExpenseListNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
   final int branchId;
   ExpenseListNotifier(this.ref, this.branchId) : super(const AsyncValue.loading()) {
     loadExpenses();
+  }
+
+  void _invalidateReports() {
+    ref.invalidate(summaryProfitabilityProvider);
+    ref.invalidate(operatingExpensesProvider);
+    ref.invalidate(profitLossProvider);
+    ref.invalidate(profitabilityTrendsProvider);
   }
 
   Future<void> loadExpenses() async {
@@ -30,6 +38,7 @@ class ExpenseListNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
       final expenseWithBranch = expense.copyWith(branchId: branchId);
       await DatabaseService.instance.insertExpense(expenseWithBranch);
       await loadExpenses();
+      _invalidateReports();
     } catch (e, st) {
       if (mounted) state = AsyncValue.error(e, st);
     }
@@ -39,6 +48,7 @@ class ExpenseListNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
     try {
       await DatabaseService.instance.updateExpense(expense);
       await loadExpenses();
+      _invalidateReports();
     } catch (e, st) {
       if (mounted) state = AsyncValue.error(e, st);
     }
@@ -48,6 +58,7 @@ class ExpenseListNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
     try {
       await DatabaseService.instance.deleteExpense(id);
       await loadExpenses();
+      _invalidateReports();
     } catch (e, st) {
       if (mounted) state = AsyncValue.error(e, st);
     }

@@ -171,8 +171,8 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
     final todayStart = DateTime(now.year, now.month, now.day);
     final monthStart = DateTime(now.year, now.month, 1);
 
-    final todayExpenses = expenses.where((e) => e.date.isAfter(todayStart)).fold<double>(0.0, (sum, e) => sum + e.amount);
-    final monthExpenses = expenses.where((e) => e.date.isAfter(monthStart)).fold<double>(0.0, (sum, e) => sum + e.amount);
+    final todayExpenses = expenses.where((e) => !e.date.isBefore(todayStart)).fold<double>(0.0, (sum, e) => sum + e.amount);
+    final monthExpenses = expenses.where((e) => !e.date.isBefore(monthStart)).fold<double>(0.0, (sum, e) => sum + e.amount);
     final netToday = todaySales - todayExpenses;
 
     return Container(
