@@ -20,22 +20,80 @@ LONG WINAPI QuickBillCrashFilter(EXCEPTION_POINTERS* pException) {
     GetModuleFileNameW(hModule, moduleName, MAX_PATH);
   }
 
+  const wchar_t* exceptionDesc = L"General Exception";
+  switch (code) {
+    case 0xC0000005: exceptionDesc = L"ACCESS_VIOLATION (GPU Driver fault, shader error, or memory access violation)"; break;
+    case 0xC00000FD: exceptionDesc = L"STACK_OVERFLOW"; break;
+    case 0xC000001D: exceptionDesc = L"ILLEGAL_INSTRUCTION (Unsupported CPU instruction)"; break;
+    case 0xC0000135: exceptionDesc = L"DLL_NOT_FOUND (Missing Microsoft Visual C++ Runtime or required DLL)"; break;
+    case 0xC0000139: exceptionDesc = L"ENTRYPOINT_NOT_FOUND (Mismatched DLL version)"; break;
+    case 0x887A0005: exceptionDesc = L"DXGI_ERROR_DEVICE_REMOVED (DirectX graphics driver crashed / GPU reset)"; break;
+    case 0x887A0006: exceptionDesc = L"DXGI_ERROR_DEVICE_HUNG (Graphics driver stopped responding)"; break;
+    case 0xE06D7363: exceptionDesc = L"C++ Exception (Unhandled C++ throw)"; break;
+  }
+
+  SYSTEMTIME st;
+  GetLocalTime(&st);
+
+  MEMORYSTATUSEX memInfo;
+  memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+  GlobalMemoryStatusEx(&memInfo);
+
+  wchar_t logContent[2048];
+  swprintf_s(logContent, 2048,
+    L"================================================================\n"
+    L"QUICKBILL POS WINDOWS CRASH REPORT\n"
+    L"Timestamp: %04d-%02d-%02d %02d:%02d:%02d\n"
+    L"================================================================\n"
+    L"Exception Code:    0x%08X\n"
+    L"Exception Meaning: %ls\n"
+    L"Faulting Module:   %ls\n"
+    L"Fault Address:     0x%p\n"
+    L"Total Physical RAM: %llu MB\n"
+    L"Avail Physical RAM: %llu MB\n"
+    L"Memory Load:       %u%%\n"
+    L"================================================================\n\n",
+    st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+    code, exceptionDesc, moduleName, addr,
+    memInfo.ullTotalPhys / (1024 * 1024),
+    memInfo.ullAvailPhys / (1024 * 1024),
+    memInfo.dwMemoryLoad);
+
+  // Write log to current folder
   FILE* f = nullptr;
-  if (fopen_s(&f, "quickbill_crash.log", "w") == 0 && f) {
-    fwprintf(f, L"Crash Exception: 0x%08X\nAddress: %p\nModule: %ls\n", code, addr, moduleName);
+  if (fopen_s(&f, "quickbill_crash.log", "a") == 0 && f) {
+    fwprintf(f, L"%ls", logContent);
     fclose(f);
+  }
+
+  // Also write to %LOCALAPPDATA%\QuickBill\quickbill_crash.log
+  wchar_t* localAppData = nullptr;
+  size_t len = 0;
+  if (_wdupenv_s(&localAppData, &len, L"LOCALAPPDATA") == 0 && localAppData) {
+    wchar_t appDataLogPath[MAX_PATH];
+    swprintf_s(appDataLogPath, MAX_PATH, L"%ls\\QuickBill", localAppData);
+    CreateDirectoryW(appDataLogPath, NULL);
+    swprintf_s(appDataLogPath, MAX_PATH, L"%ls\\QuickBill\\quickbill_crash.log", localAppData);
+    if (fopen_s(&f, appDataLogPath, "a") == 0 && f) {
+      fwprintf(f, L"%ls", logContent);
+      fclose(f);
+    }
+    free(localAppData);
   }
 
   wchar_t msg[1024];
   swprintf_s(msg, 1024,
     L"QuickBill POS encountered an unexpected system error.\n\n"
-    L"Exception Code: 0x%08X\n"
-    L"Faulting Module: %ls\n\n"
-    L"To resolve this issue:\n"
-    L"1. Double-click and install 'vc_redist.x64.exe' in the QuickBill folder.\n"
-    L"2. Update or reinstall your Intel Graphics display drivers.\n"
+    L"• Exception: 0x%08X\n"
+    L"• Type: %ls\n"
+    L"• Faulting Module: %ls\n\n"
+    L"A detailed crash report has been saved to:\n"
+    L"quickbill_crash.log\n\n"
+    L"Recommended Fixes:\n"
+    L"1. Install 'vc_redist.x64.exe' in the QuickBill folder.\n"
+    L"2. Update or reinstall your Intel Display Drivers.\n"
     L"3. Run QuickBill as Administrator.",
-    code, moduleName);
+    code, exceptionDesc, moduleName);
 
   ::MessageBoxW(nullptr, msg, L"QuickBill Crash Diagnostics", MB_ICONERROR | MB_OK);
   return EXCEPTION_EXECUTE_HANDLER;

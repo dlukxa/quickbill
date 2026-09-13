@@ -24,6 +24,17 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqlite3/open.dart';
 import 'dart:ffi';
 
+void _logErrorToFile(dynamic error, dynamic stack) {
+  try {
+    if (Platform.isWindows) {
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      final file = File('$exeDir\\quickbill_runtime.log');
+      final timestamp = DateTime.now().toIso8601String();
+      file.writeAsStringSync('[$timestamp] ERROR: $error\nSTACK TRACE:\n$stack\n----------------------------------------\n', mode: FileMode.append);
+    }
+  } catch (_) {}
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -31,10 +42,12 @@ void main() async {
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     debugPrint('GLOBAL FLUTTER ERROR: ${details.exception}\n${details.stack}');
+    _logErrorToFile(details.exception, details.stack);
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('GLOBAL UNCAUGHT ASYNC ERROR: $error\n$stack');
+    _logErrorToFile(error, stack);
     return true; // Prevents process termination
   };
 
