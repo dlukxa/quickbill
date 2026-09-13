@@ -1,11 +1,21 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <intrin.h>
 #include <string>
 #include <vector>
 
 #include "flutter_window.h"
 #include "utils.h"
+
+// Check if current CPU hardware supports AVX2 instructions (introduced in Intel Haswell 2013)
+bool IsCpuAvx2Supported() {
+  int cpuInfo[4] = {0};
+  __cpuid(cpuInfo, 0);
+  if (cpuInfo[0] < 7) return false;
+  __cpuidex(cpuInfo, 7, 0);
+  return (cpuInfo[1] & (1 << 5)) != 0; // EBX bit 5 = AVX2
+}
 
 // Windows crash handler to capture hardware, driver, or runtime faults
 LONG WINAPI QuickBillCrashFilter(EXCEPTION_POINTERS* pException) {
@@ -102,6 +112,16 @@ LONG WINAPI QuickBillCrashFilter(EXCEPTION_POINTERS* pException) {
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   ::SetUnhandledExceptionFilter(QuickBillCrashFilter);
+
+  // Diagnostic log for hardware & CPU instruction set compatibility
+  bool hasAvx2 = IsCpuAvx2Supported();
+  FILE* startupLog = nullptr;
+  if (_wfopen_s(&startupLog, L"quickbill_startup.log", L"w") == 0 && startupLog) {
+    fwprintf(startupLog, L"=== QuickBill POS Windows Startup Diagnostics ===\n");
+    fwprintf(startupLog, L"CPU Architecture: %ls\n", hasAvx2 ? L"AVX2 Supported (Modern Architecture)" : L"Intel Sandy Bridge / Legacy x86-64 (AVX2-Free Safe Mode)");
+    fwprintf(startupLog, L"Instruction Target: /arch:AVX (Compatible with Intel Core i5-2400 and above)\n");
+    fclose(startupLog);
+  }
 
   // Ensure current working directory is the folder where the executable lives
   // so relative paths (e.g. "data" and bundled DLLs) always resolve correctly,

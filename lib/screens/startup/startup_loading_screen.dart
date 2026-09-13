@@ -120,18 +120,10 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
         debugPrint('Desktop fonts notice: $e');
       }
 
-      // Non-blocking background Firebase init for cloud sync (never blocks desktop POS)
-      try {
-        Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        ).timeout(const Duration(seconds: 2)).then((_) {
-          debugPrint('Desktop background Firebase initialized');
-        }).catchError((e) {
-          debugPrint('Desktop background Firebase notice: $e');
-        });
-      } catch (e) {
-        debugPrint('Desktop Firebase trigger notice: $e');
-      }
+      // QuickBill Desktop is 100% offline-first and runs purely on local SQLite.
+      // We explicitly bypass calling native Firebase.initializeApp() on Windows desktop
+      // because the precompiled Firebase C++ SDK (BoringSSL/Abseil) contains AVX2 instructions
+      // which trigger STATUS_ILLEGAL_INSTRUCTION (0xC000001D) crashes on Intel Core i5-2400 (Sandy Bridge).
 
       if (!mounted) return;
       setState(() {

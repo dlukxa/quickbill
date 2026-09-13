@@ -16,6 +16,9 @@ final authServiceProvider = Provider<AuthService>((ref) {
 });
 
 final authStateProvider = StreamProvider<User?>((ref) {
+  if (Platform.isWindows || Platform.isLinux) {
+    return Stream.value(null);
+  }
   // Wrap the stream to catch any library-level cast errors (like the PigeonUserDetails error)
   return FirebaseAuth.instance.authStateChanges().handleError((error) {
     debugPrint('Auth Stream Error: $error');
@@ -23,6 +26,9 @@ final authStateProvider = StreamProvider<User?>((ref) {
 });
 
 final userDocumentProvider = StreamProvider<Map<String, dynamic>?>((ref) {
+  if (Platform.isWindows || Platform.isLinux) {
+    return Stream.value(null);
+  }
   final shopUid = ref.watch(activeShopUidProvider);
   if (shopUid == null) return Stream.value(null);
   
@@ -34,6 +40,9 @@ final userDocumentProvider = StreamProvider<Map<String, dynamic>?>((ref) {
 });
 
 final employeeDocumentProvider = StreamProvider<Map<String, dynamic>?>((ref) {
+  if (Platform.isWindows || Platform.isLinux) {
+    return Stream.value(null);
+  }
   final shopUid = ref.watch(activeShopUidProvider);
   final employeeAsync = ref.watch(currentEmployeeProvider);
   final employeeId = employeeAsync.value?.id;
