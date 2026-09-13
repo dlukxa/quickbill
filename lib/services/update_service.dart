@@ -19,10 +19,13 @@ class UpdateService {
   UpdateService._init();
 
   /// Checks if the current app version is lower than the minimum required version.
-  /// Throws [UpdateRequiredException] if an update is mandatory.
   Future<void> checkUpdateRequired() async {
     try {
-      final doc = await FirebaseFirestore.instance.collection('app_config').doc('version').get();
+      final doc = await FirebaseFirestore.instance
+          .collection('app_config')
+          .doc('version')
+          .get()
+          .timeout(const Duration(seconds: 2));
       if (!doc.exists || doc.data() == null) return;
       
       final data = doc.data()!;

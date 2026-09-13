@@ -50,6 +50,14 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
   String _latestVersion = '';
   
   bool _subscriptionRequired = false;
+  bool _isFinished = false;
+
+  void _completeStartup([String reason = 'normal']) {
+    if (_isFinished) return;
+    _isFinished = true;
+    debugPrint('🚀 QuickBill Startup Complete ($reason)');
+    widget.onInitializationComplete();
+  }
 
   @override
   void initState() {
@@ -59,6 +67,13 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
     
+    // Hard watchdog: Under NO circumstances should the app be stuck on splash screen for > 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted && !_isFinished && !_updateRequired && !_subscriptionRequired) {
+        _completeStartup('Watchdog 3s timer expired');
+      }
+    });
+
     // Start the asynchronous initialization process
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _runInitialization();
@@ -72,6 +87,66 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
   }
 
   Future<void> _runInitialization() async {
+    // ─── Fast-path for Desktop POS (Windows / Linux / macOS) ─────────────────
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      if (!mounted) return;
+      setState(() {
+        _progress = 0.20;
+        _statusMessage = 'Starting QuickBill POS Engine...';
+      });
+
+      // Quick local settings & preferences initialization
+      try {
+        await ref.read(settingsProvider.notifier).init().timeout(
+          const Duration(milliseconds: 600),
+          onTimeout: () => null,
+        );
+      } catch (e) {
+        debugPrint('Desktop settings notice: $e');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _progress = 0.60;
+        _statusMessage = 'Preparing printing & receipt engine...';
+      });
+
+      try {
+        await PdfService.instance.preWarmFonts().timeout(
+          const Duration(milliseconds: 600),
+          onTimeout: () => null,
+        );
+      } catch (e) {
+        debugPrint('Desktop fonts notice: $e');
+      }
+
+      // Non-blocking background Firebase init for cloud sync (never blocks desktop POS)
+      try {
+        Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        ).timeout(const Duration(seconds: 2)).then((_) {
+          debugPrint('Desktop background Firebase initialized');
+        }).catchError((e) {
+          debugPrint('Desktop background Firebase notice: $e');
+        });
+      } catch (e) {
+        debugPrint('Desktop Firebase trigger notice: $e');
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _progress = 1.0;
+        _statusMessage = 'System Ready';
+      });
+
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (mounted) {
+        _completeStartup('Desktop fast-path');
+      }
+      return;
+    }
+
+    // ─── Mobile / Default Initialization Path ──────────────────────────────
     setState(() {
       _progress = 0.0;
       _statusMessage = 'Connecting to Google Cloud Services...';
@@ -83,7 +158,7 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       try {
         await Firebase.initializeApp(
           options: DefaultFirebaseOptions.currentPlatform,
-        );
+        ).timeout(const Duration(seconds: 2), onTimeout: () => Firebase.app());
       } catch (e) {
         debugPrint('⚠️ Firebase.initializeApp notice: $e');
       }
@@ -107,9 +182,12 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       // Initialize Remote Config for dynamic cloud keys and flags (mobile/macOS only)
       if (!kIsWeb && !Platform.isWindows && !Platform.isLinux) {
         try {
-          await RemoteConfigService.instance.initialize();
+          await RemoteConfigService.instance.initialize().timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => null,
+          );
         } catch (e) {
-          debugPrint('RemoteConfig desktop notice: $e');
+          debugPrint('RemoteConfig notice: $e');
         }
       }
       
@@ -122,7 +200,7 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
             return true;
           };
         } catch (e) {
-          debugPrint('Crashlytics desktop notice: $e');
+          debugPrint('Crashlytics notice: $e');
         }
       }
 
@@ -134,7 +212,12 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
 
       // Check for forced app updates
       try {
-        await UpdateService.instance.checkUpdateRequired();
+        await UpdateService.instance.checkUpdateRequired().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => null,
+        );
+      } on UpdateRequiredException {
+        rethrow;
       } catch (e) {
         debugPrint('Update check notice: $e');
       }
@@ -147,7 +230,10 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
           final devPass = prefs.getString('dev_password_cache');
           if (devEmail != null && devPass != null) {
             try {
-              await FirebaseAuth.instance.signInWithEmailAndPassword(email: devEmail, password: devPass);
+              await FirebaseAuth.instance.signInWithEmailAndPassword(
+                email: devEmail,
+                password: devPass,
+              ).timeout(const Duration(seconds: 2));
               debugPrint('🛡️ Dev Auto-login succeeded');
             } catch (e) {
               debugPrint('🛡️ Dev Auto-login failed: $e');
@@ -168,7 +254,7 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       if (!Platform.isWindows && !Platform.isLinux) {
         try {
           await NotificationService.instance.init().timeout(
-            const Duration(seconds: 3),
+            const Duration(seconds: 2),
             onTimeout: () => null,
           );
         } catch (e) {
@@ -184,7 +270,7 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
 
       // 3. Pre-load PDF fonts
       await PdfService.instance.preWarmFonts().timeout(
-        const Duration(seconds: 3),
+        const Duration(seconds: 2),
         onTimeout: () => null,
       );
 
@@ -196,7 +282,7 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
 
       // 4. Initialize Local Preferences/Settings
       await ref.read(settingsProvider.notifier).init().timeout(
-        const Duration(seconds: 3),
+        const Duration(seconds: 2),
         onTimeout: () => null,
       );
 
@@ -208,10 +294,9 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
 
       // 5. Initialize Staff device configurations
       await ref.read(isStaffDeviceProvider.notifier).init().timeout(
-        const Duration(seconds: 3),
+        const Duration(seconds: 2),
         onTimeout: () => null,
       );
-
 
       if (!mounted) return;
       setState(() {
@@ -222,7 +307,7 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       // 6. Verify Subscription Status (Only if logged in)
       if (FirebaseAuth.instance.currentUser != null) {
         await SubscriptionService.instance.checkSubscriptionAccess().timeout(
-          const Duration(seconds: 3),
+          const Duration(seconds: 2),
           onTimeout: () => null,
         );
       }
@@ -234,10 +319,10 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       });
 
       // Brief delay to show 100% progress state
-      await Future.delayed(const Duration(milliseconds: 400));
+      await Future.delayed(const Duration(milliseconds: 300));
       
       if (mounted) {
-        widget.onInitializationComplete();
+        _completeStartup('Normal completion');
       }
     } on UpdateRequiredException catch (e) {
       if (mounted) {
@@ -254,13 +339,9 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
         });
       }
     } catch (e) {
-      debugPrint('QuickBill Startup Exception: $e');
+      debugPrint('QuickBill Startup Exception (falling back offline): $e');
       if (mounted) {
-        setState(() {
-          _progress = 0.0;
-          _statusMessage = 'Initialization Failed';
-          _errorMessage = e.toString();
-        });
+        _completeStartup('Exception fallback');
       }
     }
   }

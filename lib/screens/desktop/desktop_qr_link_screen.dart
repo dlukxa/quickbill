@@ -78,7 +78,9 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         if (FirebaseAuth.instance.currentUser != null) {
           sessionId = FirebaseAuth.instance.currentUser!.uid;
         } else {
-          final userCred = await FirebaseAuth.instance.signInAnonymously();
+          final userCred = await FirebaseAuth.instance
+              .signInAnonymously()
+              .timeout(const Duration(seconds: 3));
           sessionId = userCred.user!.uid;
         }
       } catch (authError) {
@@ -98,7 +100,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         'pairingCode': pairingCode,
         'createdAt': FieldValue.serverTimestamp(),
         'expiresAt': DateTime.now().add(const Duration(seconds: 100)).toIso8601String(),
-      });
+      }).timeout(const Duration(seconds: 3));
 
       if (!mounted) return;
       setState(() {
