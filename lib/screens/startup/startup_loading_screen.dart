@@ -552,25 +552,38 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       backgroundColor: bgColor,
       body: Stack(
         children: [
-          // Elegant subtle gradient mesh in the background
+          // Subtle gradient mesh in the background (static on desktop to protect low-VRAM GPUs)
           Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: const Alignment(0, -0.3),
-                      radius: 1.2 + (_pulseController.value * 0.1),
-                      colors: [
-                        AppTheme.primaryGreen.withOpacity(isDark ? 0.08 : 0.04),
-                        Colors.transparent,
-                      ],
+            child: Platform.isWindows
+                ? Container(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: const Alignment(0, -0.3),
+                        radius: 1.2,
+                        colors: [
+                          AppTheme.primaryGreen.withOpacity(isDark ? 0.08 : 0.04),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
+                  )
+                : AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, child) {
+                      return Container(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(0, -0.3),
+                            radius: 1.2 + (_pulseController.value * 0.1),
+                            colors: [
+                              AppTheme.primaryGreen.withOpacity(isDark ? 0.08 : 0.04),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
           Center(
             child: SingleChildScrollView(
@@ -594,31 +607,44 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Pulsating app logo icon
-                      AnimatedBuilder(
-                        animation: _pulseController,
-                        builder: (context, child) {
-                          return Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryGreen.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.primaryGreen.withOpacity(0.15 * _pulseController.value),
-                                  blurRadius: 20,
-                                  spreadRadius: 2,
-                                ),
-                              ],
+                      // App logo icon (static on desktop to avoid continuous GPU shader buffer churn)
+                      Platform.isWindows
+                          ? Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryGreen.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Image.asset(
+                                'assets/images/logo.png',
+                                width: 64,
+                                height: 64,
+                              ),
+                            )
+                          : AnimatedBuilder(
+                              animation: _pulseController,
+                              builder: (context, child) {
+                                return Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryGreen.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppTheme.primaryGreen.withOpacity(0.15 * _pulseController.value),
+                                        blurRadius: 20,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: Image.asset(
+                                    'assets/images/logo.png',
+                                    width: 64,
+                                    height: 64,
+                                  ),
+                                );
+                              },
                             ),
-                            child: Image.asset(
-                              'assets/images/logo.png',
-                              width: 64,
-                              height: 64,
-                            ),
-                          );
-                        },
-                      ),
                       const SizedBox(height: 28),
                       // App Name
                       Text(

@@ -59,11 +59,10 @@ jobs:
               Write-Host "Successfully bundled MSVC CRT DLLs from $crtDir"
             }
           }
-          if (!(Test-Path "build\windows\x64\runner\Release\msvcp140.dll")) {
-            Copy-Item "C:\Windows\System32\msvcp140.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
-            Copy-Item "C:\Windows\System32\vcruntime140.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
-            Copy-Item "C:\Windows\System32\vcruntime140_1.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
-          }
+          Copy-Item "C:\Windows\System32\msvcp140*.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
+          Copy-Item "C:\Windows\System32\vcruntime140*.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
+          Copy-Item "C:\Windows\System32\vcomp140*.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
+          Copy-Item "C:\Windows\System32\concrt140*.dll" "build\windows\x64\runner\Release\" -Force -ErrorAction SilentlyContinue
 
           # 3. Download standalone vc_redist.x64.exe for Inno Setup installer
           Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc_redist.x64.exe"
