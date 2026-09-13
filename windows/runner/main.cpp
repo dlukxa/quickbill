@@ -61,7 +61,7 @@ LONG WINAPI QuickBillCrashFilter(EXCEPTION_POINTERS* pException) {
 
   // Write log to current folder
   FILE* f = nullptr;
-  if (fopen_s(&f, "quickbill_crash.log", "a") == 0 && f) {
+  if (_wfopen_s(&f, L"quickbill_crash.log", L"a") == 0 && f) {
     fwprintf(f, L"%ls", logContent);
     fclose(f);
   }
@@ -74,7 +74,7 @@ LONG WINAPI QuickBillCrashFilter(EXCEPTION_POINTERS* pException) {
     swprintf_s(appDataLogPath, MAX_PATH, L"%ls\\QuickBill", localAppData);
     CreateDirectoryW(appDataLogPath, NULL);
     swprintf_s(appDataLogPath, MAX_PATH, L"%ls\\QuickBill\\quickbill_crash.log", localAppData);
-    if (fopen_s(&f, appDataLogPath, "a") == 0 && f) {
+    if (_wfopen_s(&f, appDataLogPath, L"a") == 0 && f) {
       fwprintf(f, L"%ls", logContent);
       fclose(f);
     }
