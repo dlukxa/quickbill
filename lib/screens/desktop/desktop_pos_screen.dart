@@ -47,6 +47,7 @@ import '../stock/product_price_manager_screen.dart';
 import '../../widgets/add_stock_dialog.dart';
 import '../../widgets/variable_quantity_dialog.dart';
 import '../../widgets/cart_quantity_edit_dialog.dart';
+import '../../widgets/cart_item_discount_dialog.dart';
 import '../suppliers/supplier_list_screen.dart';
 import '../suppliers/purchase_management_screen.dart';
 import '../returns/sales_history_screen.dart';
@@ -1559,7 +1560,9 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
     final cart = ref.watch(cartProvider);
     final settings = ref.watch(settingsProvider);
     final l10n = PosL10n.of(settings.languageCode);
-    final subtotal = cart.fold(0.0, (s, item) => s + item.total);
+    final grossSubtotal = cart.fold(0.0, (s, item) => s + item.subtotal);
+    final totalItemDiscount = cart.fold(0.0, (s, item) => s + item.discount);
+    final subtotal = (grossSubtotal - totalItemDiscount).clamp(0.0, double.infinity);
     final total = subtotal;
 
     final cartBg = isDark ? const Color(0xFF1E293B) : Colors.white;
@@ -1751,8 +1754,17 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
               children: [
                 _TotalRow(
                     label: l10n.subtotal,
-                    value: Formatters.currency(subtotal),
+                    value: Formatters.currency(grossSubtotal),
                     isDark: isDark),
+                if (totalItemDiscount > 0) ...[
+                  const SizedBox(height: 6),
+                  _TotalRow(
+                    label: 'Item Discounts',
+                    value: '-${Formatters.currency(totalItemDiscount)}',
+                    color: Colors.amber,
+                    isDark: isDark,
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Divider(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
                 _TotalRow(
@@ -2591,6 +2603,7 @@ class _CartItemTile extends ConsumerWidget {
               Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
                 spacing: 6,
+                runSpacing: 2,
                 children: [
                   Text(
                     Formatters.currency(item.total),
@@ -2599,6 +2612,16 @@ class _CartItemTile extends ConsumerWidget {
                         color: AppTheme.primaryGreen,
                         fontWeight: FontWeight.w700),
                   ),
+                  if (item.discount > 0)
+                    Text(
+                      Formatters.currency(item.subtotal),
+                      style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                        decoration: TextDecoration.lineThrough,
+                        decorationColor: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                      ),
+                    ),
                   Text(
                     '(${Formatters.currency(item.itemPrice)}/${item.productBaseUnit})',
                     style: GoogleFonts.inter(
@@ -2607,6 +2630,80 @@ class _CartItemTile extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 4),
+              // Discount badge or Add discount button
+              if (item.discount > 0)
+                InkWell(
+                  onTap: () => CartItemDiscountDialog.show(
+                    context,
+                    item: item,
+                    index: index,
+                    isDark: isDark,
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: isDark ? 0.2 : 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: Colors.amber.withValues(alpha: isDark ? 0.45 : 0.35),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.local_offer_rounded, size: 10, color: Colors.amber),
+                        const SizedBox(width: 4),
+                        Text(
+                          '-${Formatters.currency(item.discount)}${item.discountPercent > 0 ? " (${item.discountPercent.toStringAsFixed(item.discountPercent == item.discountPercent.round() ? 0 : 1)}%)" : ""}',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.amberAccent : const Color(0xFFB45309),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.edit_rounded, size: 9, color: isDark ? Colors.amberAccent : const Color(0xFFB45309)),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                InkWell(
+                  onTap: () => CartItemDiscountDialog.show(
+                    context,
+                    item: item,
+                    index: index,
+                    isDark: isDark,
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: isDark ? Colors.white10 : const Color(0xFFCBD5E1),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.local_offer_outlined, size: 10, color: isDark ? Colors.white54 : const Color(0xFF64748B)),
+                        const SizedBox(width: 3),
+                        Text(
+                          '+ % Disc',
+                          style: GoogleFonts.inter(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -2704,22 +2801,25 @@ class _TotalRow extends StatelessWidget {
   final String value;
   final bool isTotal;
   final bool isDark;
+  final Color? color;
 
   const _TotalRow({
     required this.label,
     required this.value,
     this.isTotal = false,
     this.isDark = true,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     final labelColor = isTotal
         ? (isDark ? Colors.white : const Color(0xFF0F172A))
-        : (isDark ? Colors.white60 : const Color(0xFF64748B));
-    final valueColor = isTotal
-        ? AppTheme.primaryGreen
-        : (isDark ? Colors.white70 : const Color(0xFF334155));
+        : (color != null ? color! : (isDark ? Colors.white60 : const Color(0xFF64748B)));
+    final valueColor = color ??
+        (isTotal
+            ? AppTheme.primaryGreen
+            : (isDark ? Colors.white70 : const Color(0xFF334155)));
 
     return Row(
       children: [

@@ -118,11 +118,31 @@ class CartItem {
     return 'Rs. ${itemPrice.toStringAsFixed(2)} / $productBaseUnit';
   }
 
+  // Undiscounted gross subtotal for this item before discount
+  double get subtotal {
+    if (sellingMode == 'pack') {
+      return ((itemPrice * quantity) * 100).round() / 100;
+    }
+    return UnitConversionService.calculateLinePrice(
+      itemPrice,
+      quantity,
+      itemUnit,
+      productBaseUnit,
+      discount: 0.0,
+    );
+  }
+
+  // Effective discount percentage (0-100)
+  double get discountPercent {
+    if (subtotal <= 0 || discount <= 0) return 0.0;
+    return ((discount / subtotal) * 100).clamp(0.0, 100.0);
+  }
+
   // Calculate total for this item: (Price * quantity) - Discount
   double get total {
     if (sellingMode == 'pack') {
-      final subtotal = itemPrice * quantity;
-      return (subtotal - discount).clamp(0.0, double.infinity);
+      final gross = itemPrice * quantity;
+      return (gross - discount).clamp(0.0, double.infinity);
     }
     return UnitConversionService.calculateLinePrice(
       itemPrice,

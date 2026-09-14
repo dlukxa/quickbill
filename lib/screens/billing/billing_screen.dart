@@ -36,6 +36,7 @@ import '../../generated/l10n/app_localizations.dart';
 import '../../providers/multi_bill_provider.dart';
 import '../../widgets/variable_quantity_dialog.dart';
 import '../../widgets/cart_quantity_edit_dialog.dart';
+import '../../widgets/cart_item_discount_dialog.dart';
 import '../../services/sinhala_search_service.dart';
 import '../../widgets/sinhala_transliteration_input.dart';
 
@@ -248,66 +249,11 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   }
 
   void _showItemDiscountDialog(BuildContext context, WidgetRef ref, CartItem item, int itemIndex) {
-    final permissions = ref.read(currentEmployeeProvider).value?.permissions;
-    if (!(permissions?.canGiveDiscount ?? false)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppLocalizations.of(context)!.accessDenied)),
-      );
-      return;
-    }
-    final controller = TextEditingController(text: item.discount > 0 ? item.discount.toString() : '');
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(AppLocalizations.of(context)!.discountLabel(item.itemName)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Max allowed: ${permissions!.maxDiscountPercent}%',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: AppLocalizations.of(context)!.enterDiscountAmount,
-                hintText: '0.00',
-                prefixText: '${globalAppRegion.currencySymbol} ',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(AppLocalizations.of(context)!.cancel)),
-          ElevatedButton(
-            onPressed: () {
-              final discount = double.tryParse(controller.text) ?? 0.0;
-              final maxDiscountAmount = (item.itemPrice * item.quantity) * (permissions.maxDiscountPercent / 100);
-              if (discount >= 0 && discount <= (item.itemPrice * item.quantity)) {
-                if (discount > maxDiscountAmount + 0.01) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(AppLocalizations.of(context)!.limitExceeded(
-                        maxDiscountAmount.toStringAsFixed(2), permissions.maxDiscountPercent.toString()))),
-                  );
-                  return;
-                }
-                ref.read(cartProvider.notifier).updateItemDiscount(
-                  discount: discount,
-                  index: itemIndex,
-                );
-                Navigator.pop(context);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(AppLocalizations.of(context)!.invalidDiscount)),
-                );
-              }
-            },
-            child: Text(AppLocalizations.of(context)!.apply),
-          ),
-        ],
-      ),
+    CartItemDiscountDialog.show(
+      context,
+      item: item,
+      index: itemIndex,
+      isDark: context.isDark,
     );
   }
 

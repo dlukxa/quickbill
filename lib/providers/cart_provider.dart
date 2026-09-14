@@ -224,7 +224,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     }
   }
 
-  // Update item quantity, unit, and mode from dialog
+  // Update item quantity, unit, mode, and discount from dialog
   void updateItemQuantityAndUnit({
     required int index,
     required double quantity,
@@ -233,6 +233,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
     double? packSize,
     String? packSizeUnit,
     double? customPrice,
+    double? discount,
   }) {
     if (index >= 0 && index < state.length) {
       if (quantity <= 0) {
@@ -247,6 +248,7 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
         packSize: packSize ?? item.packSize,
         packSizeUnit: packSizeUnit ?? item.packSizeUnit,
         customSellingPrice: customPrice ?? item.customSellingPrice,
+        discount: discount ?? item.discount,
       );
       state = [...state];
     }

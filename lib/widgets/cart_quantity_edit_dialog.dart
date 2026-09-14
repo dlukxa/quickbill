@@ -44,6 +44,8 @@ class CartQuantityEditDialog extends ConsumerStatefulWidget {
 
 class _CartQuantityEditDialogState extends ConsumerState<CartQuantityEditDialog> {
   late TextEditingController _qtyController;
+  late TextEditingController _discountController;
+  bool _isDiscountPercent = true;
   late String _selectedUnit;
   late ProductSellingMode _activeMode;
 
@@ -73,30 +75,61 @@ class _CartQuantityEditDialogState extends ConsumerState<CartQuantityEditDialog>
     _qtyController = TextEditingController(
       text: qty == qty.roundToDouble() ? qty.toInt().toString() : qty.toString(),
     );
+
+    final initialDisc = item.discount;
+    final initialSubtotal = item.subtotal;
+    if (initialDisc > 0 && initialSubtotal > 0) {
+      final pct = (initialDisc / initialSubtotal) * 100;
+      if ((pct - pct.round()).abs() < 0.01) {
+        _isDiscountPercent = true;
+        _discountController = TextEditingController(text: pct.toInt().toString());
+      } else {
+        _isDiscountPercent = false;
+        _discountController = TextEditingController(
+          text: initialDisc == initialDisc.roundToDouble()
+              ? initialDisc.toInt().toString()
+              : initialDisc.toStringAsFixed(2),
+        );
+      }
+    } else {
+      _isDiscountPercent = true;
+      _discountController = TextEditingController();
+    }
   }
 
   @override
   void dispose() {
     _qtyController.dispose();
+    _discountController.dispose();
     super.dispose();
   }
 
   double get _enteredQuantity => double.tryParse(_qtyController.text.trim()) ?? 0.0;
+  double get _enteredDiscountValue => double.tryParse(_discountController.text.trim()) ?? 0.0;
 
-  double get _lineTotal {
+  double get _lineSubtotal {
     final item = widget.item;
     if (_activeMode.modeType == 'pack') {
-      final subtotal = _activeMode.price * _enteredQuantity;
-      return (subtotal - item.discount).clamp(0.0, double.infinity);
+      return _activeMode.price * _enteredQuantity;
     }
     return UnitConversionService.calculateLinePrice(
       _activeMode.price,
       _enteredQuantity,
       _selectedUnit,
       item.productBaseUnit,
-      discount: item.discount,
+      discount: 0.0,
     );
   }
+
+  double get _enteredDiscount {
+    if (_isDiscountPercent) {
+      final pct = _enteredDiscountValue.clamp(0.0, 100.0);
+      return ((_lineSubtotal * (pct / 100.0)) * 100).round() / 100;
+    }
+    return _enteredDiscountValue.clamp(0.0, _lineSubtotal);
+  }
+
+  double get _lineTotal => (_lineSubtotal - _enteredDiscount).clamp(0.0, double.infinity);
 
   double get _baseQuantity {
     final item = widget.item;
@@ -148,6 +181,7 @@ class _CartQuantityEditDialogState extends ConsumerState<CartQuantityEditDialog>
       packSize: _activeMode.modeType == 'pack' ? _activeMode.packSize : null,
       packSizeUnit: _activeMode.modeType == 'pack' ? _activeMode.packSizeUnit : null,
       customPrice: _activeMode.modeType == 'pack' ? _activeMode.price : null,
+      discount: _enteredDiscount,
     );
 
     Navigator.pop(context);
@@ -328,9 +362,9 @@ class _CartQuantityEditDialogState extends ConsumerState<CartQuantityEditDialog>
                       ),
                     ],
                   ),
-                  if (item.discount > 0)
+                  if (_enteredDiscount > 0)
                     Text(
-                      'Discount: -${Formatters.currency(item.discount)}',
+                      'Discount: -${Formatters.currency(_enteredDiscount)}',
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -392,7 +426,7 @@ class _CartQuantityEditDialogState extends ConsumerState<CartQuantityEditDialog>
                 ],
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
 
             // Manual Input Row (Quantity + Unit Dropdown)
             Row(
@@ -436,7 +470,179 @@ class _CartQuantityEditDialogState extends ConsumerState<CartQuantityEditDialog>
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            // Discount Section
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _enteredDiscount > 0
+                      ? Colors.amber.withValues(alpha: 0.5)
+                      : (isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.local_offer_rounded,
+                            size: 15,
+                            color: _enteredDiscount > 0 ? Colors.amber : subColor,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Item Discount',
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: textColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      // Toggle % vs Currency
+                      Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white10 : const Color(0xFFE2E8F0),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            InkWell(
+                              onTap: () {
+                                if (!_isDiscountPercent) {
+                                  setState(() {
+                                    _isDiscountPercent = true;
+                                    final pct = _lineSubtotal > 0 ? (_enteredDiscount / _lineSubtotal) * 100 : 0.0;
+                                    _discountController.text = pct > 0 ? (pct == pct.round() ? pct.toInt().toString() : pct.toStringAsFixed(1)) : '';
+                                  });
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _isDiscountPercent ? AppTheme.primaryGreen : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '%',
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isDiscountPercent ? Colors.white : subColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () {
+                                if (_isDiscountPercent) {
+                                  setState(() {
+                                    _isDiscountPercent = false;
+                                    final disc = _enteredDiscount;
+                                    _discountController.text = disc > 0 ? (disc == disc.roundToDouble() ? disc.toInt().toString() : disc.toStringAsFixed(2)) : '';
+                                  });
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: !_isDiscountPercent ? AppTheme.primaryGreen : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  globalAppRegion.currencySymbol,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: !_isDiscountPercent ? Colors.white : subColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // Preset chips & input
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextFormField(
+                          controller: _discountController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700, color: textColor),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            labelText: _isDiscountPercent ? 'Discount %' : 'Discount Amount',
+                            prefixIcon: Icon(
+                              _isDiscountPercent ? Icons.percent_rounded : Icons.local_offer_outlined,
+                              size: 16,
+                              color: Colors.amber,
+                            ),
+                            suffixText: _isDiscountPercent ? '%' : globalAppRegion.currencySymbol,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Wrap(
+                        spacing: 4,
+                        children: [5, 10, 15, 20].map((pct) {
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _isDiscountPercent = true;
+                                _discountController.text = pct.toString();
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFCBD5E1)),
+                              ),
+                              child: Text(
+                                '$pct%',
+                                style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: textColor),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      if (_enteredDiscount > 0) ...[
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 18, color: Colors.redAccent),
+                          tooltip: 'Clear Discount',
+                          onPressed: () => setState(() => _discountController.text = ''),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
 
             // Live Calculation Box
             Container(
@@ -468,6 +674,18 @@ class _CartQuantityEditDialogState extends ConsumerState<CartQuantityEditDialog>
                           color: AppTheme.primaryGreen,
                         ),
                       ),
+                      if (_enteredDiscount > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            'Gross: ${Formatters.currency(_lineSubtotal)} • Saved: -${Formatters.currency(_enteredDiscount)}',
+                            style: GoogleFonts.inter(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.amber,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                   Column(
