@@ -497,7 +497,7 @@ class PrintingService {
 
     final totalDiscount = items.fold(0.0, (sum, item) => sum + item.discount) + sale.discount;
     if (totalDiscount > 0) {
-      await _bluetooth.printLeftRight('Discount:', '-${totalDiscount.toStringAsFixed(2)}', 1);
+      await _bluetooth.printLeftRight('Total Savings (සම්පූර්ණ ලාභය):', '-${totalDiscount.toStringAsFixed(2)}', 1);
     }
     if (sale.tax > 0) {
       await _bluetooth.printLeftRight('Tax (VAT):', sale.tax.toStringAsFixed(2), 1);

@@ -416,11 +416,19 @@ class ReceiptL10n {
               : 'Savings';
 
   String get totalProfit => isSi
-      ? 'ලාභයේ එකතුව'
+      ? 'සම්පූර්ණ ලාභය'
       : isTa
           ? 'மொத்த சேமிப்பு'
           : isBilingual
-              ? 'ලාභයේ එකතුව / Total Savings'
+              ? 'සම්පූර්ණ ලාභය / Total Savings'
+              : 'Total Savings';
+
+  String get totalSavings => isSi
+      ? 'සම්පූර්ණ ලාභය'
+      : isTa
+          ? 'மொத்த சேமிப்பு'
+          : isBilingual
+              ? 'සම්පූර්ණ ලාභය / Total Savings'
               : 'Total Savings';
 
   String get merchantProfit => isSi

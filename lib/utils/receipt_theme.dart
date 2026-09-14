@@ -93,6 +93,18 @@ class ReceiptTheme {
         height: 1.25,
       );
 
+  static TextStyle savingsLabel(bool is58mm) => textStyle(
+        fontSize: is58mm ? 12.0 : 14.5,
+        fontWeight: FontWeight.w900,
+        height: 1.25,
+      );
+
+  static TextStyle savingsValue(bool is58mm) => textStyle(
+        fontSize: is58mm ? 12.5 : 15.0,
+        fontWeight: FontWeight.w900,
+        height: 1.25,
+      );
+
   static TextStyle grandTotalLabel(bool is58mm) => textStyle(
         fontSize: is58mm ? 15.0 : 18.0,
         fontWeight: FontWeight.w900,

@@ -697,7 +697,7 @@ class PdfService {
               buildSummaryRow(l10n.subtotal, Formatters.number(grossStandardTotal > 0 ? grossStandardTotal : subtotalOurPrice, decimalPlaces: 2), fontSize: bodyFontSize),
               if (showDiscount && totalDiscount > 0) ...[
                 pw.SizedBox(height: 1.0),
-                buildSummaryRow(l10n.profit, Formatters.number(totalDiscount, decimalPlaces: 2), fontSize: bodyFontSize, isBold: true),
+                buildSummaryRow(l10n.totalSavings, Formatters.number(totalDiscount, decimalPlaces: 2), fontSize: bodyFontSize + 1.0, isBold: true),
               ],
               pw.SizedBox(height: 1.0),
               buildSummaryRow(l10n.returns, '0.00', fontSize: bodyFontSize),
@@ -1185,10 +1185,10 @@ class PdfService {
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('${l10n.discount}:', style: pw.TextStyle(fontSize: bodyFontSize)),
+                    pw.Text('${l10n.totalSavings}:', style: pw.TextStyle(fontSize: bodyFontSize + 1.0, fontWeight: pw.FontWeight.bold)),
                     pw.Text(
                       '-${Formatters.number(totalDiscount, decimalPlaces: 2)}',
-                      style: pw.TextStyle(fontSize: bodyFontSize, fontWeight: pw.FontWeight.bold),
+                      style: pw.TextStyle(fontSize: bodyFontSize + 1.0, fontWeight: pw.FontWeight.bold),
                     ),
                   ],
                 ),

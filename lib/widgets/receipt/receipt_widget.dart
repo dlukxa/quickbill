@@ -553,11 +553,21 @@ class ReceiptWidget extends StatelessWidget {
         ? totalPcs.toInt().toString()
         : totalPcs.toStringAsFixed(2);
 
+    double itemSavings(SaleItem item) {
+      final qty = item.soldQuantity ?? item.quantity;
+      final stdPrice = item.unitPrice > 0
+          ? item.unitPrice
+          : (qty > 0 ? (item.total + item.discount) / qty : item.total);
+      final diff = (stdPrice * qty) - item.total;
+      return diff > item.discount ? diff : item.discount;
+    }
+
     final subtotalGross = items.fold(
       0.0,
       (sum, item) => sum + item.total + item.discount,
     );
-    final totalDiscount = items.fold(0.0, (sum, item) => sum + item.discount) + sale.discount;
+
+    final totalSavings = items.fold(0.0, (sum, item) => sum + itemSavings(item)) + sale.discount;
 
     return Column(
       children: [
@@ -583,17 +593,23 @@ class ReceiptWidget extends StatelessWidget {
           ],
         ),
 
-        // Discount / Customer Savings
-        if (settings.showReceiptDiscount && totalDiscount > 0.05) ...[
-          const SizedBox(height: 3),
+        // Discount / Customer Savings ("සම්පූර්ණ ලාභය" - Bold & Larger)
+        if (settings.showReceiptDiscount && totalSavings > 0.05) ...[
+          const SizedBox(height: 3.5),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(l10n.discount, style: ReceiptTheme.summaryLabel(is58mm)),
-              Text('-${totalDiscount.toStringAsFixed(2)}',
-                  style: ReceiptTheme.summaryValue(is58mm)),
+              Text(
+                l10n.totalSavings,
+                style: ReceiptTheme.savingsLabel(is58mm),
+              ),
+              Text(
+                '-${totalSavings.toStringAsFixed(2)}',
+                style: ReceiptTheme.savingsValue(is58mm),
+              ),
             ],
           ),
+          const SizedBox(height: 1.5),
         ],
 
         // Tax / VAT

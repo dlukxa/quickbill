@@ -100,7 +100,8 @@ void main() {
       expect(l10n.standardPrice, 'සදාන් මිල');
       expect(l10n.ourPrice, 'අපේ මිල');
       expect(l10n.profit, 'ලාභය');
-      expect(l10n.totalProfit, 'ලාභයේ එකතුව');
+      expect(l10n.totalProfit, 'සම්පූර්ණ ලාභය');
+      expect(l10n.totalSavings, 'සම්පූර්ණ ලාභය');
       expect(l10n.grandTotal, 'මුළු මුදල');
       expect(l10n.cashReceived, 'ගෙවූ මුදල');
       expect(l10n.change, 'හුවමාරුව');
@@ -142,7 +143,8 @@ void main() {
       expect(l10n.qtyHeader, 'ප්‍රමාණය / Qty');
       expect(l10n.priceHeader, 'මිල / Price');
       expect(l10n.grandTotal, 'මුළු මුදල / Grand Total');
-      expect(l10n.totalProfit, 'ලාභයේ එකතුව / Total Savings');
+      expect(l10n.totalProfit, 'සම්පූර්ණ ලාභය / Total Savings');
+      expect(l10n.totalSavings, 'සම්පූර්ණ ලාභය / Total Savings');
       expect(l10n.cashReceived, 'ගෙවූ මුදල / Cash Paid');
       expect(l10n.change, 'හුවමාරුව / Change');
     });
