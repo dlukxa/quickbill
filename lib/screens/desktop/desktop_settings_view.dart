@@ -23,6 +23,7 @@ import '../../models/sale_item.dart';
 import '../../utils/pos_l10n.dart';
 import '../../widgets/sinhala_transliteration_input.dart';
 import '../../widgets/receipt/receipt_preview_dialog.dart';
+import '../../widgets/store_logo_widget.dart';
 
 /// Comprehensive tabbed desktop settings view
 class DesktopSettingsView extends ConsumerStatefulWidget {
@@ -242,33 +243,16 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Logo Avatar / Preview Box
-                Container(
-                  width: 90,
-                  height: 90,
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white10 : Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isDark ? Colors.white24 : Colors.grey.shade300,
-                      width: 1.5,
-                    ),
+                StoreLogoWidget(
+                  logoUrl: settings.shopLogoUrl,
+                  size: 90,
+                  borderRadius: 12,
+                  backgroundColor: isDark ? Colors.white10 : Colors.grey.shade100,
+                  border: Border.all(
+                    color: isDark ? Colors.white24 : Colors.grey.shade300,
+                    width: 1.5,
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: settings.shopLogoUrl != null && settings.shopLogoUrl!.isNotEmpty
-                        ? (settings.shopLogoUrl!.startsWith('http://') || settings.shopLogoUrl!.startsWith('https://')
-                            ? Image.network(
-                                settings.shopLogoUrl!,
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                              )
-                            : Image.file(
-                                File(settings.shopLogoUrl!),
-                                fit: BoxFit.contain,
-                                errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                              ))
-                        : Image.asset('assets/images/logo.png', fit: BoxFit.contain),
-                  ),
+                  padding: const EdgeInsets.all(6),
                 ),
                 const SizedBox(width: 20),
                 // Logo Info and Actions
@@ -308,7 +292,7 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'This logo appears at the top of customer receipts (thermal & PDF) and invoices. PNG or JPG recommended.',
+                        'This logo appears on customer receipts (thermal & PDF), invoices, and the desktop application header. PNG or JPG recommended.',
                         style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
                       ),
                       const SizedBox(height: 14),

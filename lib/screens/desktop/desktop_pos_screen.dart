@@ -28,6 +28,7 @@ import '../../models/sale.dart';
 import '../../providers/customer_provider.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/cached_product_image.dart';
+import '../../widgets/store_logo_widget.dart';
 import '../../widgets/receipt/receipt_preview_dialog.dart';
 import '../billing/quick_item_sheet.dart';
 import '../customers/customer_list_screen.dart';
@@ -901,19 +902,10 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 36,
-                  height: 36,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const Icon(
-                    Icons.storefront_rounded,
-                    color: Color(0xFF10B981),
-                    size: 28,
-                  ),
-                ),
+              StoreLogoWidget(
+                logoUrl: settings.shopLogoUrl,
+                size: 36,
+                borderRadius: 8,
               ),
               const SizedBox(width: 12),
               Column(

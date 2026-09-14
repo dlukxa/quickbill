@@ -44,7 +44,9 @@ function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
   target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
   target_compile_options(${TARGET} PRIVATE /EHsc)
-  target_compile_options(${TARGET} PRIVATE /arch:AVX)
+  # Standard baseline x86-64 (SSE2). Do NOT specify /arch:AVX or /arch:AVX2 here.
+  # Modern MSVC with /arch:AVX generates FMA3, F16C, and AVX2 instructions that trigger
+  # STATUS_ILLEGAL_INSTRUCTION (0xC000001D) APPCRASH on Intel Core i5-2400 (Sandy Bridge).
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")

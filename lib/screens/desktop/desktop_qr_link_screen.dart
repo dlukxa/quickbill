@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../config/theme.dart';
 import '../../services/staff_login_service.dart';
+import '../../widgets/store_logo_widget.dart';
 
 /// Default test shop UID pre-configured with demo products, categories, and cashiers
 const String kDefaultTestShopUid = 'iiFadszr3lZYVMX61f7hbIB56492';
@@ -283,9 +284,10 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
+                  StoreLogoWidget(
+                    size: 48,
+                    borderRadius: 12,
+                    fallback: Image.asset(
                       'assets/images/logo.png',
                       width: 48,
                       height: 48,

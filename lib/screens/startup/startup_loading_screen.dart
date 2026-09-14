@@ -52,9 +52,21 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
   bool _subscriptionRequired = false;
   bool _isFinished = false;
 
+  void _logStartupMilestone(String milestone) {
+    try {
+      if (Platform.isWindows) {
+        final exeDir = File(Platform.resolvedExecutable).parent.path;
+        final file = File('$exeDir\\quickbill_startup.log');
+        final timestamp = DateTime.now().toIso8601String();
+        file.writeAsStringSync('[$timestamp] [Flutter Runtime] $milestone\n', mode: FileMode.append);
+      }
+    } catch (_) {}
+  }
+
   void _completeStartup([String reason = 'normal']) {
     if (_isFinished) return;
     _isFinished = true;
+    _logStartupMilestone('Startup completed successfully ($reason)');
     debugPrint('🚀 QuickBill Startup Complete ($reason)');
     widget.onInitializationComplete();
   }
@@ -89,6 +101,7 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
   Future<void> _runInitialization() async {
     // ─── Fast-path for Desktop POS (Windows / Linux / macOS) ─────────────────
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      _logStartupMilestone('Desktop fast-path initiated');
       if (!mounted) return;
       setState(() {
         _progress = 0.20;
@@ -101,7 +114,9 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
           const Duration(milliseconds: 600),
           onTimeout: () => null,
         );
+        _logStartupMilestone('Local settings and preferences initialized');
       } catch (e) {
+        _logStartupMilestone('Desktop settings notice: $e');
         debugPrint('Desktop settings notice: $e');
       }
 
@@ -116,7 +131,9 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
           const Duration(milliseconds: 600),
           onTimeout: () => null,
         );
+        _logStartupMilestone('Receipt and printing fonts pre-warmed');
       } catch (e) {
+        _logStartupMilestone('Desktop fonts notice: $e');
         debugPrint('Desktop fonts notice: $e');
       }
 

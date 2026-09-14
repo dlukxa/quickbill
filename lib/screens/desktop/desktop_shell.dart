@@ -20,6 +20,7 @@ import 'desktop_pos_screen.dart';
 import 'desktop_sales_view.dart';
 import 'desktop_settings_view.dart';
 import 'desktop_suppliers_view.dart';
+import '../../widgets/store_logo_widget.dart';
 
 import '../../providers/desktop_nav_provider.dart';
 export '../../providers/desktop_nav_provider.dart';
@@ -216,9 +217,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                     children: [
                       // Top Branding / Header with Collapse/Expand Toggle
                       if (showCollapsed)
-                        _buildCollapsedHeader(posL10n)
+                        _buildCollapsedHeader(settings, posL10n)
                       else
-                        _buildExpandedHeader(selectedBranch?.name ?? 'Main Branch', posL10n),
+                        _buildExpandedHeader(settings, selectedBranch?.name ?? 'Main Branch', posL10n),
 
                       const Divider(height: 1, color: Color(0xFF334155)),
 
@@ -328,7 +329,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
 
   // ─── Header: Collapsed (Icon-only) ─────────────────────────────────────────
 
-  Widget _buildCollapsedHeader(PosL10n posL10n) {
+  Widget _buildCollapsedHeader(AppSettings settings, PosL10n posL10n) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
@@ -340,19 +341,10 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
               borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    width: 32,
-                    height: 32,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.storefront_rounded,
-                      color: AppTheme.primaryGreen,
-                      size: 26,
-                    ),
-                  ),
+                child: StoreLogoWidget(
+                  logoUrl: settings.shopLogoUrl,
+                  size: 32,
+                  borderRadius: 8,
                 ),
               ),
             ),
@@ -375,24 +367,19 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
 
   // ─── Header: Expanded (Sized-up) ───────────────────────────────────────────
 
-  Widget _buildExpandedHeader(String branchName, PosL10n posL10n) {
+  Widget _buildExpandedHeader(AppSettings settings, String branchName, PosL10n posL10n) {
+    final title = settings.shopName.trim().isNotEmpty
+        ? settings.shopName.trim()
+        : 'QuickBill POS';
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset(
-              'assets/images/logo.png',
-              width: 34,
-              height: 34,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.storefront_rounded,
-                color: AppTheme.primaryGreen,
-                size: 26,
-              ),
-            ),
+          StoreLogoWidget(
+            logoUrl: settings.shopLogoUrl,
+            size: 34,
+            borderRadius: 8,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -400,7 +387,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'QuickBill POS',
+                  title,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
