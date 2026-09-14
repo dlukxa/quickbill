@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -57,7 +58,7 @@ class SyncService {
   static final SyncService instance = SyncService._init();
   SyncService._init();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   Timer? _syncTimer;
   Timer? _pullTimer;
   bool _isSyncing = false;
@@ -104,6 +105,7 @@ bool _isDisposed = false;
   }
 
   void startSync() {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS || Firebase.apps.isEmpty) return;
     if (_ref == null) return;
     
     // Delay initial sync to let the home screen UI finish its initial database reads.
@@ -149,6 +151,7 @@ bool _isDisposed = false;
   }
 
   Future<void> syncSettings() async {
+    if (Platform.isWindows || Platform.isLinux || _firestore == null) return;
     if (_ref == null) return;
     final user = AuthService.instance.currentUser;
     if (user == null) return;
@@ -184,6 +187,7 @@ bool _isDisposed = false;
   }
 
   Future<void> pushSettings(AppSettings settings) async {
+    if (Platform.isWindows || Platform.isLinux || _firestore == null) return;
     final user = AuthService.instance.currentUser;
     if (user == null) return;
     
@@ -213,6 +217,7 @@ bool _isDisposed = false;
 
   // Helper method for periodic pulls (doesn't set restoring status)
   Future<void> _pullRemoteChanges() async {
+    if (Platform.isWindows || Platform.isLinux || _firestore == null) return;
     if (_isSyncing || _ref == null) return;
 
     final user = AuthService.instance.currentUser;
@@ -347,6 +352,7 @@ bool _isDisposed = false;
   }
 
   Future<void> pushLocalChanges({bool isManual = false, Function(String status, double progress)? onProgress}) async {
+    if (Platform.isWindows || Platform.isLinux || _firestore == null) return;
     if (_isSyncing || _ref == null) return;
     
     final user = AuthService.instance.currentUser;
@@ -427,6 +433,7 @@ bool _isDisposed = false;
 
   /// Lazy load older historical data for a specific collection
   Future<void> pullHistoricalData(String collection) async {
+    if (Platform.isWindows || Platform.isLinux || _firestore == null) return;
     if (_ref == null) return;
     
     final user = AuthService.instance.currentUser;
@@ -492,6 +499,7 @@ bool _isDisposed = false;
   }
 
   Future<void> syncEssentialData() async {
+    if (Platform.isWindows || Platform.isLinux || _firestore == null) return;
     if (_ref == null) return;
     
     final shopUid = await AuthService.instance.getShopUid();

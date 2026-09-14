@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -126,7 +127,7 @@ class AuthService {
   static final AuthService instance = AuthService._init();
   AuthService._init();
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  FirebaseAuth get _auth => FirebaseAuth.instance;
 
   // Sign up
   Future<UserCredential> signUp(String email, String password, [String? deviceId]) async {
@@ -275,7 +276,13 @@ class AuthService {
     await clearShopUid();
     
     // 4. Firebase Auth logout
-    await _auth.signOut();
+    if (!Platform.isWindows && !Platform.isLinux && Firebase.apps.isNotEmpty) {
+      try {
+        await _auth.signOut();
+      } catch (e) {
+        debugPrint('AuthService signOut notice: $e');
+      }
+    }
   }
 
   // --- Phone Authentication ---
@@ -319,7 +326,7 @@ class AuthService {
   }
 
   Future<void> registerCurrentDevice(String deviceId) async {
-    final user = _auth.currentUser;
+    final user = currentUser;
     if (user != null) {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'last_device_id': deviceId,
@@ -329,7 +336,15 @@ class AuthService {
   }
 
   // Current user
-  User? get currentUser => _auth.currentUser;
+  User? get currentUser {
+    try {
+      if (Platform.isWindows || Platform.isLinux) return null;
+      if (Firebase.apps.isEmpty) return null;
+      return _auth.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
 
   // Password reset
   Future<void> sendPasswordResetEmail(String email) async {
@@ -368,7 +383,7 @@ class AuthService {
 
   // Delete account
   Future<void> deleteAccount() async {
-    final user = _auth.currentUser;
+    final user = currentUser;
     if (user == null) throw Exception('No user logged in');
 
     final uid = user.uid;

@@ -94,6 +94,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
 
   @override
   void dispose() {
+    try {
+      ref.read(syncServiceProvider).stopSync();
+    } catch (_) {}
     _keyboardFocusNode.dispose();
     super.dispose();
   }

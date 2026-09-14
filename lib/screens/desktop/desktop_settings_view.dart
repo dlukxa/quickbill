@@ -455,20 +455,23 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Receipt Design Template',
-                      style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Choose the visual format for thermal printing and PDF receipts',
-                      style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Receipt Design Template',
+                        style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Choose the visual format for thermal printing and PDF receipts',
+                        style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 12),
                 OutlinedButton.icon(
                   onPressed: () => _previewReceipt(settings),
                   icon: const Icon(Icons.preview_rounded, size: 18),
@@ -529,20 +532,27 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                         children: [
                           const Icon(Icons.language_rounded, size: 18, color: AppTheme.primaryGreen),
                           const SizedBox(width: 6),
-                          Text(posL10n.appInterfaceLanguage, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          Expanded(
+                            child: Text(
+                              posL10n.appInterfaceLanguage,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
                         value: settings.languageCode,
+                        isExpanded: true,
                         decoration: const InputDecoration(border: OutlineInputBorder()),
                         items: const [
-                          DropdownMenuItem(value: 'en', child: Text('English (English)')),
-                          DropdownMenuItem(value: 'si', child: Text('සිංහල (Sinhala)')),
-                          DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)')),
-                          DropdownMenuItem(value: 'hi', child: Text('हिन्दी (Hindi)')),
-                          DropdownMenuItem(value: 'bn', child: Text('বাংলা (Bengali)')),
-                          DropdownMenuItem(value: 'dv', child: Text('ދިވެހި (Dhivehi)')),
+                          DropdownMenuItem(value: 'en', child: Text('English (English)', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'si', child: Text('සිංහල (Sinhala)', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'hi', child: Text('हिन्दी (Hindi)', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'bn', child: Text('বাংলা (Bengali)', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'dv', child: Text('ދިވެހි (Dhivehi)', overflow: TextOverflow.ellipsis)),
                         ],
                         onChanged: (val) {
                           if (val != null) notifier.updateLanguage(val);
@@ -562,18 +572,25 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                         children: [
                           const Icon(Icons.receipt_long_rounded, size: 18, color: Colors.blue),
                           const SizedBox(width: 6),
-                          Text(posL10n.receiptLanguageTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          Expanded(
+                            child: Text(
+                              posL10n.receiptLanguageTitle,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
                         value: settings.receiptLanguage,
+                        isExpanded: true,
                         decoration: const InputDecoration(border: OutlineInputBorder()),
                         items: const [
-                          DropdownMenuItem(value: 'si', child: Text('සිංහල (Sinhala) — Default')),
-                          DropdownMenuItem(value: 'en', child: Text('English')),
-                          DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)')),
-                          DropdownMenuItem(value: 'bilingual', child: Text('ද්විභාෂා (Bilingual - Sinhala + English)')),
+                          DropdownMenuItem(value: 'si', child: Text('සිංහල (Sinhala) — Default', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'en', child: Text('English', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'ta', child: Text('தமிழ் (Tamil)', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'bilingual', child: Text('ද්විභාෂා (Bilingual)', overflow: TextOverflow.ellipsis)),
                         ],
                         onChanged: (val) {
                           if (val != null) notifier.updateReceiptLanguage(val);
@@ -593,16 +610,23 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                         children: [
                           const Icon(Icons.print_outlined, size: 18, color: Colors.orange),
                           const SizedBox(width: 6),
-                          Text(posL10n.paperSizeTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                          Expanded(
+                            child: Text(
+                              posL10n.paperSizeTitle,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
                         value: settings.printerPaperSize,
+                        isExpanded: true,
                         decoration: const InputDecoration(border: OutlineInputBorder()),
                         items: const [
-                          DropdownMenuItem(value: '80mm', child: Text('80mm (Standard POS)')),
-                          DropdownMenuItem(value: '58mm', child: Text('58mm (Mobile Roll)')),
+                          DropdownMenuItem(value: '80mm', child: Text('80mm (Standard POS)', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: '58mm', child: Text('58mm (Mobile Roll)', overflow: TextOverflow.ellipsis)),
                         ],
                         onChanged: (val) {
                           if (val != null) notifier.updatePrinterPaperSize(val);

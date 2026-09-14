@@ -19,35 +19,29 @@ import 'screens/startup/startup_loading_screen.dart';
 import 'screens/startup/language_selection_screen.dart';
 import 'utils/fallback_localizations.dart';
 import 'screens/desktop/desktop_wrapper.dart';
+import 'services/startup_logger.dart';
+import 'widgets/developer_diagnostic_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqlite3/open.dart';
 import 'dart:ffi';
 
 void _logErrorToFile(dynamic error, dynamic stack) {
-  try {
-    if (Platform.isWindows) {
-      final exeDir = File(Platform.resolvedExecutable).parent.path;
-      final file = File('$exeDir\\quickbill_runtime.log');
-      final timestamp = DateTime.now().toIso8601String();
-      file.writeAsStringSync('[$timestamp] ERROR: $error\nSTACK TRACE:\n$stack\n----------------------------------------\n', mode: FileMode.append);
-    }
-  } catch (_) {}
+  StartupLogger.logError('Runtime', error, stack is StackTrace ? stack : null);
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  StartupLogger.log('QuickBill POS engine entry: main() initialized');
 
   // Protect against fatal crashes from uncaught errors
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    debugPrint('GLOBAL FLUTTER ERROR: ${details.exception}\n${details.stack}');
-    _logErrorToFile(details.exception, details.stack);
+    StartupLogger.logError('FlutterRuntime', details.exception, details.stack);
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('GLOBAL UNCAUGHT ASYNC ERROR: $error\n$stack');
-    _logErrorToFile(error, stack);
+    StartupLogger.logError('UncaughtAsync', error, stack);
     return true; // Prevents process termination
   };
 
@@ -78,45 +72,10 @@ void main() async {
     }
   }
 
-    // ZEN ERROR SHIELD - Replaces the 'Red Screen' globally with our premium design
+    // ZEN ERROR SHIELD & DEVELOPER DIAGNOSTICS - Replaces the 'Red Screen' with technical details
     ErrorWidget.builder = (FlutterErrorDetails details) {
-      debugPrint('GLOBAL APP ERROR: ${details.exception}');
-      return Directionality(
-        textDirection: TextDirection.ltr,
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            color: const Color(0xFFF1F5F9), // Light background
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF10B981), // AppTheme.primaryGreen 
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 64),
-                ),
-                const SizedBox(height: 32),
-                const Text(
-                  'Smoothing Things Out',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'A small technical hurdle occurred. We\'re working to make it perfect.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 15, color: Color(0xFF475569), height: 1.5),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      StartupLogger.logError('WidgetBuild', details.exception, details.stack);
+      return DeveloperDiagnosticScreen(details: details);
     };
 
   runApp(
@@ -183,6 +142,7 @@ class _QuickBillLoaderAppState extends State<QuickBillLoaderApp> {
         themeMode: ThemeMode.light,
         home: StartupLoadingScreen(
           onInitializationComplete: () {
+            StartupLogger.log('QuickBillLoaderApp: onInitializationComplete fired -> transitioning to QuickBillApp');
             setState(() {
               _isInitialized = true;
             });
@@ -206,6 +166,7 @@ class QuickBillApp extends ConsumerWidget {
 
     // ─── Windows / macOS / Linux Desktop ─────────────────────────────────────
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+      StartupLogger.log('QuickBillApp.build() -> Mounting DesktopWrapper');
       return MaterialApp(
         title: 'QuickBill POS — Desktop',
         debugShowCheckedModeBanner: false,

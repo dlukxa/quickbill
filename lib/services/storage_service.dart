@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +12,15 @@ class StorageService {
   static final StorageService instance = StorageService._init();
   StorageService._init();
 
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  FirebaseStorage? get _storage {
+    try {
+      if (Platform.isWindows || Platform.isLinux) return null;
+      if (Firebase.apps.isEmpty) return null;
+      return FirebaseStorage.instance;
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Uploads a file to Firebase Storage.
   /// [path] is the relative path in the bucket (e.g. 'products/123.jpg')
@@ -20,9 +29,12 @@ class StorageService {
     required File imageFile,
     int? maxWidth, // Kept for API compatibility but ignored as we rely on native picker
   }) async {
+    final storage = _storage;
+    if (storage == null) return null;
+
     try {
       // Upload directly - UI should handle resizing via ImagePicker for better memory performance
-      final ref = _storage.ref().child(path);
+      final ref = storage.ref().child(path);
       final metadata = SettableMetadata(contentType: 'image/jpeg');
       
       final uploadTask = ref.putFile(imageFile, metadata);
@@ -35,8 +47,11 @@ class StorageService {
   }
 
   Future<void> deleteImage(String url) async {
+    final storage = _storage;
+    if (storage == null) return;
+
     try {
-      final ref = _storage.refFromURL(url);
+      final ref = storage.refFromURL(url);
       await ref.delete();
     } catch (e) {
       debugPrint('Storage Delete Error: $e');

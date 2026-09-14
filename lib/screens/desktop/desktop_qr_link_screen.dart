@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -76,13 +77,15 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
     try {
       String sessionId;
       try {
-        if (FirebaseAuth.instance.currentUser != null) {
+        if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
           sessionId = FirebaseAuth.instance.currentUser!.uid;
-        } else {
+        } else if (Firebase.apps.isNotEmpty) {
           final userCred = await FirebaseAuth.instance
               .signInAnonymously()
               .timeout(const Duration(seconds: 3));
           sessionId = userCred.user!.uid;
+        } else {
+          sessionId = 'pc_${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecondsSinceEpoch % 100000}';
         }
       } catch (authError) {
         debugPrint('DesktopQrLinkScreen auth fallback: $authError');
@@ -92,16 +95,40 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
       // 6-digit numeric pairing code
       final pairingCode = (100000 + Random().nextInt(900000)).toString();
 
-      // Write a pending session document
-      await FirebaseFirestore.instance
-          .collection('pc_sessions')
-          .doc(sessionId)
-          .set({
-        'status': 'pending',
-        'pairingCode': pairingCode,
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': DateTime.now().add(const Duration(seconds: 100)).toIso8601String(),
-      }).timeout(const Duration(seconds: 3));
+      if (Firebase.apps.isNotEmpty) {
+        // Write a pending session document
+        await FirebaseFirestore.instance
+            .collection('pc_sessions')
+            .doc(sessionId)
+            .set({
+          'status': 'pending',
+          'pairingCode': pairingCode,
+          'createdAt': FieldValue.serverTimestamp(),
+          'expiresAt': DateTime.now().add(const Duration(seconds: 100)).toIso8601String(),
+        }).timeout(const Duration(seconds: 3));
+
+        // Listen for mobile to authenticate the session
+        _sessionSub?.cancel();
+        _sessionSub = FirebaseFirestore.instance
+            .collection('pc_sessions')
+            .doc(sessionId)
+            .snapshots()
+            .listen((snap) {
+          if (!snap.exists) return;
+          final data = snap.data()!;
+          if (data['status'] == 'authenticated' && data['shopUid'] != null) {
+            _sessionSub?.cancel();
+            _refreshTimer?.cancel();
+            _countdownTimer?.cancel();
+            widget.onLinked(data['shopUid'] as String);
+          }
+        }, onError: (err) {
+          if (!mounted) return;
+          setState(() {
+            _error = 'Connection lost: $err';
+          });
+        });
+      }
 
       if (!mounted) return;
       setState(() {
@@ -109,28 +136,6 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         _pairingCode = pairingCode;
         _countdown = 90.0;
         _error = null;
-      });
-
-      // Listen for mobile to authenticate the session
-      _sessionSub?.cancel();
-      _sessionSub = FirebaseFirestore.instance
-          .collection('pc_sessions')
-          .doc(sessionId)
-          .snapshots()
-          .listen((snap) {
-        if (!snap.exists) return;
-        final data = snap.data()!;
-        if (data['status'] == 'authenticated' && data['shopUid'] != null) {
-          _sessionSub?.cancel();
-          _refreshTimer?.cancel();
-          _countdownTimer?.cancel();
-          widget.onLinked(data['shopUid'] as String);
-        }
-      }, onError: (err) {
-        if (!mounted) return;
-        setState(() {
-          _error = 'Connection lost: $err';
-        });
       });
 
       // Auto-refresh QR after 90 seconds
@@ -250,6 +255,14 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
       _isActionLoading = true;
       _actionError = null;
     });
+
+    if (Firebase.apps.isEmpty) {
+      setState(() {
+        _actionError = 'Direct cloud login requires online Firebase. Use One-Click Test Mode or enter shop code.';
+        _isActionLoading = false;
+      });
+      return;
+    }
 
     try {
       final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -438,12 +451,15 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
               color: isSelected ? Colors.white : Colors.white60,
             ),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? Colors.white : Colors.white60,
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? Colors.white : Colors.white60,
+                ),
               ),
             ),
           ],
@@ -498,28 +514,33 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
             width: 220,
             height: 220,
             padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
-                const SizedBox(height: 10),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(color: Colors.red.shade300, fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  onPressed: _createSession,
-                  icon: const Icon(Icons.refresh_rounded, size: 16),
-                  label: Text('Retry', style: GoogleFonts.inter(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryBlue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
+                  const SizedBox(height: 10),
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(color: Colors.red.shade300, fontSize: 12),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _createSession,
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: Text('Retry', style: GoogleFonts.inter(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryBlue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ],
+              ),
             ),
           )
         else

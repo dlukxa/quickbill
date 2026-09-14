@@ -5,6 +5,7 @@ import '../../providers/customer_provider.dart';
 import '../../providers/employee_provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/sync_service.dart';
+import '../../services/startup_logger.dart';
 import '../auth/profile_picker_screen.dart';
 import 'desktop_qr_link_screen.dart';
 import 'desktop_shell.dart';
@@ -34,8 +35,10 @@ class _DesktopWrapperState extends ConsumerState<DesktopWrapper> {
   }
 
   Future<void> _loadSavedShopUid() async {
+    StartupLogger.log('DesktopWrapper: _loadSavedShopUid() reading SharedPreferences');
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_kShopUidKey);
+    StartupLogger.log('DesktopWrapper: loaded shopUid = $saved');
     if (saved != null) {
       await prefs.setString('active_shop_uid', saved);
       _syncShopData(saved);
@@ -44,6 +47,7 @@ class _DesktopWrapperState extends ConsumerState<DesktopWrapper> {
       _shopUid = saved;
       _isLoading = false;
     });
+    StartupLogger.log('DesktopWrapper: _isLoading set to false');
   }
 
   Future<void> _onLinked(String shopUid) async {
@@ -101,6 +105,7 @@ class _DesktopWrapperState extends ConsumerState<DesktopWrapper> {
 
     // Not linked → show QR
     if (_shopUid == null) {
+      StartupLogger.log('DesktopWrapper: shopUid is null -> mounting DesktopQrLinkScreen');
       return DesktopQrLinkScreen(onLinked: _onLinked);
     }
 
@@ -110,16 +115,24 @@ class _DesktopWrapperState extends ConsumerState<DesktopWrapper> {
       data: (employee) {
         if (employee == null) {
           // No cashier selected → show profile/PIN picker
+          StartupLogger.log('DesktopWrapper: shopUid is $_shopUid, employee is null -> mounting ProfilePickerScreen');
           return ProfilePickerScreen(onSignOut: _unlink);
         }
         // Cashier selected → full Desktop Shell with POS, Inventory, Sales, Customers, Settings
+        StartupLogger.log('DesktopWrapper: cashier selected (${employee.name}) -> mounting DesktopShell');
         return const DesktopShell();
       },
-      loading: () => const Scaffold(
-        backgroundColor: Color(0xFF0F172A),
-        body: Center(child: CircularProgressIndicator()),
-      ),
-      error: (_, __) => DesktopQrLinkScreen(onLinked: _onLinked),
+      loading: () {
+        StartupLogger.log('DesktopWrapper: loading employee session...');
+        return const Scaffold(
+          backgroundColor: Color(0xFF0F172A),
+          body: Center(child: CircularProgressIndicator()),
+        );
+      },
+      error: (e, st) {
+        StartupLogger.logError('DesktopWrapper: currentEmployeeProvider error', e, st);
+        return DesktopQrLinkScreen(onLinked: _onLinked);
+      },
     );
   }
 }

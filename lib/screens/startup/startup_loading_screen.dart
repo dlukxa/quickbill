@@ -23,6 +23,7 @@ import '../../services/update_service.dart';
 import 'update_required_screen.dart';
 import '../../services/subscription_service.dart';
 import '../../services/remote_config_service.dart';
+import '../../services/startup_logger.dart';
 import 'subscription_required_screen.dart';
 import '../subscription/subscription_paywall_screen.dart';
 import '../../services/pdf_service.dart';
@@ -53,20 +54,13 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
   bool _isFinished = false;
 
   void _logStartupMilestone(String milestone) {
-    try {
-      if (Platform.isWindows) {
-        final exeDir = File(Platform.resolvedExecutable).parent.path;
-        final file = File('$exeDir\\quickbill_startup.log');
-        final timestamp = DateTime.now().toIso8601String();
-        file.writeAsStringSync('[$timestamp] [Flutter Runtime] $milestone\n', mode: FileMode.append);
-      }
-    } catch (_) {}
+    StartupLogger.log(milestone);
   }
 
   void _completeStartup([String reason = 'normal']) {
     if (_isFinished) return;
     _isFinished = true;
-    _logStartupMilestone('Startup completed successfully ($reason)');
+    StartupLogger.log('Startup completed ($reason) -> Invoking widget.onInitializationComplete()');
     debugPrint('🚀 QuickBill Startup Complete ($reason)');
     widget.onInitializationComplete();
   }
@@ -147,9 +141,11 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
         _progress = 1.0;
         _statusMessage = 'System Ready';
       });
+      StartupLogger.log('Desktop fast-path: Progress reached 100% (System Ready)');
 
       await Future.delayed(const Duration(milliseconds: 200));
       if (mounted) {
+        StartupLogger.log('Desktop fast-path: Calling _completeStartup("Desktop fast-path")');
         _completeStartup('Desktop fast-path');
       }
       return;

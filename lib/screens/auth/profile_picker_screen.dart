@@ -11,6 +11,7 @@ import '../../generated/l10n/app_localizations.dart';
 import '../../services/sync_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/database_service.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -161,7 +162,14 @@ class ProfilePickerScreen extends ConsumerWidget {
                 Expanded(
                   child: employeeList.when(
                     data: (employees) {
-                      final isAnonymous = FirebaseAuth.instance.currentUser?.isAnonymous ?? true;
+                      bool isAnonymous = true;
+                      try {
+                        if (!isDesktop && Firebase.apps.isNotEmpty) {
+                          isAnonymous = FirebaseAuth.instance.currentUser?.isAnonymous ?? true;
+                        }
+                      } catch (_) {
+                        isAnonymous = true;
+                      }
                       // On Desktop POS, or if user is authenticated as owner, or if no other profiles exist, always show owner
                       final showOwner = isDesktop ||
                           !isAnonymous ||

@@ -83,27 +83,31 @@ class _DesktopSuppliersViewState extends ConsumerState<DesktopSuppliersView> wit
         children: [
           const Icon(Icons.inventory_2_rounded, color: AppTheme.primaryBlue, size: 28),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                posL10n.suppliersAndGrn,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  posL10n.suppliersAndGrn,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Text(
-                posL10n.suppliersSubtitle,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                Text(
+                  posL10n.suppliersSubtitle,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 16),
           // Tabs
           Container(
             height: 40,

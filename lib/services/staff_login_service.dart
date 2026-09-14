@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/employee.dart';
 
@@ -6,10 +8,13 @@ class StaffLoginService {
   static final StaffLoginService instance = StaffLoginService._init();
   StaffLoginService._init();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   /// Generate a 6-digit numeric code and store the handshake in Firestore
   Future<String> generateLoginCode(Employee employee, String ownerUid, String ownerEmail, String ownerPassword) async {
+    if (Platform.isWindows || Platform.isLinux || Firebase.apps.isEmpty) {
+      throw Exception('Online staff pairing is not available in offline desktop mode.');
+    }
     final code = _generateRandomCode();
     final expiry = DateTime.now().add(const Duration(minutes: 10));
 
@@ -28,6 +33,7 @@ class StaffLoginService {
 
   /// Validate a code and return the credentials if successful
   Future<Map<String, dynamic>?> validateLoginCode(String rawCode) async {
+    if (Platform.isWindows || Platform.isLinux || Firebase.apps.isEmpty) return null;
     final code = rawCode.trim();
     try {
       final docRef = _firestore.collection('temp_logins').doc(code);
@@ -75,6 +81,7 @@ class StaffLoginService {
   
   /// Helper to clean up the document after successful sign-in
   Future<void> deleteCode(String code) async {
+    if (Platform.isWindows || Platform.isLinux || Firebase.apps.isEmpty) return;
     await _firestore.collection('temp_logins').doc(code).delete();
   }
 }

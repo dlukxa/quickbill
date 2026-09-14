@@ -127,27 +127,31 @@ class _DesktopExpensesViewState extends ConsumerState<DesktopExpensesView> {
         children: [
           Icon(Icons.payments_rounded, color: Colors.amber.shade700, size: 28),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                posL10n.expensesAndOperatingCosts,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF0F172A),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  posL10n.expensesAndOperatingCosts,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF0F172A),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              Text(
-                posL10n.expensesSubtitle,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 13,
-                  color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                Text(
+                  posL10n.expensesSubtitle,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 13,
+                    color: isDark ? Colors.white60 : const Color(0xFF64748B),
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const Spacer(),
+          const SizedBox(width: 16),
           ElevatedButton.icon(
             onPressed: () => _showAddExpenseDialog(context),
             icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),

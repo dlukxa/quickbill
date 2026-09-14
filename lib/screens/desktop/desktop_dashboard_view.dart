@@ -34,9 +34,9 @@ class DesktopDashboardView extends ConsumerWidget {
     final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
     final textSecondary = isDark ? Colors.white60 : const Color(0xFF64748B);
 
-    return Container(
-      color: bg,
-      child: RefreshIndicator(
+    return Scaffold(
+      backgroundColor: bg,
+      body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(todayStatsProvider);
           ref.invalidate(topProductsProvider);
@@ -52,24 +52,29 @@ class DesktopDashboardView extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        posL10n.storeDashboardTitle,
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: textPrimary,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          posL10n.storeDashboardTitle,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: textPrimary,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        posL10n.dashboardSubtitle,
-                        style: GoogleFonts.inter(fontSize: 13, color: textSecondary),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          posL10n.dashboardSubtitle,
+                          style: GoogleFonts.inter(fontSize: 13, color: textSecondary),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 16),
                   Row(
                     children: [
                       OutlinedButton.icon(
@@ -191,14 +196,18 @@ class DesktopDashboardView extends ConsumerWidget {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                posL10n.hourlySalesVelocity,
-                                style: GoogleFonts.plusJakartaSans(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: textPrimary,
+                              Expanded(
+                                child: Text(
+                                  posL10n.hourlySalesVelocity,
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: textPrimary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              const SizedBox(width: 8),
                               TextButton.icon(
                                 icon: const Icon(Icons.analytics_rounded, size: 14),
                                 label: const Text('Profitability Analytics'),
@@ -412,14 +421,18 @@ class DesktopDashboardView extends ConsumerWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          posL10n.topSellingProducts,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: textPrimary,
+                        Expanded(
+                          child: Text(
+                            posL10n.topSellingProducts,
+                            style: GoogleFonts.plusJakartaSans(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        const SizedBox(width: 8),
                         TextButton.icon(
                           icon: const Icon(Icons.inventory_2_rounded, size: 14),
                           label: Text(posL10n.manageStock),
@@ -543,15 +556,19 @@ class DesktopDashboardView extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: textSecondary,
-                  letterSpacing: 0.8,
+              Expanded(
+                child: Text(
+                  title,
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: textSecondary,
+                    letterSpacing: 0.8,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
