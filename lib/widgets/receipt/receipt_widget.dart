@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/sale.dart';
@@ -21,6 +24,8 @@ class ReceiptWidget extends StatelessWidget {
   final String? overridePaperSize;
   final String? overrideLanguage;
   final String? overrideTemplate;
+  final Uint8List? logoBytes;
+  final ui.Image? logoUiImage;
 
   const ReceiptWidget({
     super.key,
@@ -32,6 +37,8 @@ class ReceiptWidget extends StatelessWidget {
     this.overridePaperSize,
     this.overrideLanguage,
     this.overrideTemplate,
+    this.logoBytes,
+    this.logoUiImage,
   });
 
   bool get is58mm =>
@@ -107,6 +114,10 @@ class ReceiptWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        if (settings.showReceiptLogo) ...[
+          _buildStoreLogo(),
+          const SizedBox(height: 4),
+        ],
         Text(
           shopName,
           textAlign: TextAlign.center,
@@ -129,6 +140,72 @@ class ReceiptWidget extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildStoreLogo() {
+    final double logoWidth = is58mm ? 48.0 : 64.0;
+    final double logoHeight = is58mm ? 36.0 : 48.0;
+
+    // 1. Direct synchronous ui.Image (used by headless ReceiptImageGenerator)
+    if (logoUiImage != null) {
+      return RawImage(
+        image: logoUiImage,
+        width: logoWidth,
+        height: logoHeight,
+        fit: BoxFit.contain,
+      );
+    }
+
+    // 2. If pre-loaded bytes provided
+    if (logoBytes != null && logoBytes!.isNotEmpty) {
+      return Image.memory(
+        logoBytes!,
+        width: logoWidth,
+        height: logoHeight,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      );
+    }
+
+    // 2. Custom shop logo URL or local file path
+    final logoUrl = settings.shopLogoUrl?.trim();
+    if (logoUrl != null && logoUrl.isNotEmpty) {
+      if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) {
+        return Image.network(
+          logoUrl,
+          width: logoWidth,
+          height: logoHeight,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => _buildFallbackLogo(logoWidth, logoHeight),
+        );
+      } else {
+        try {
+          final file = File(logoUrl);
+          if (file.existsSync()) {
+            return Image.file(
+              file,
+              width: logoWidth,
+              height: logoHeight,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => _buildFallbackLogo(logoWidth, logoHeight),
+            );
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 3. Fallback to default asset logo
+    return _buildFallbackLogo(logoWidth, logoHeight);
+  }
+
+  Widget _buildFallbackLogo(double width, double height) {
+    return Image.asset(
+      'assets/images/logo.png',
+      width: width,
+      height: height,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
     );
   }
 

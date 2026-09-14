@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +14,7 @@ import 'package:printing/printing.dart';
 import '../../services/backup_service.dart';
 import '../../services/cash_drawer_service.dart';
 import '../../services/export_service.dart';
+import '../../services/local_media_storage_service.dart';
 import '../../services/pdf_service.dart';
 import '../../services/printing_service.dart';
 import '../../services/sync_service.dart';
@@ -233,7 +236,181 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
           ),
           const SizedBox(height: 24),
 
-          // 1. Business Info Card
+          // 1. Store Logo Card
+          _buildCard(cardBg, borderColor, [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Logo Avatar / Preview Box
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white10 : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark ? Colors.white24 : Colors.grey.shade300,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: settings.shopLogoUrl != null && settings.shopLogoUrl!.isNotEmpty
+                        ? (settings.shopLogoUrl!.startsWith('http://') || settings.shopLogoUrl!.startsWith('https://')
+                            ? Image.network(
+                                settings.shopLogoUrl!,
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                              )
+                            : Image.file(
+                                File(settings.shopLogoUrl!),
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                              ))
+                        : Image.asset('assets/images/logo.png', fit: BoxFit.contain),
+                  ),
+                ),
+                const SizedBox(width: 20),
+                // Logo Info and Actions
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            'Store Logo (ආයතනයේ ලාංඡනය)',
+                            style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (settings.shopLogoUrl != null && settings.shopLogoUrl!.isNotEmpty)
+                                  ? AppTheme.primaryGreen.withValues(alpha: 0.15)
+                                  : Colors.blue.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              (settings.shopLogoUrl != null && settings.shopLogoUrl!.isNotEmpty)
+                                  ? 'Custom Logo Active'
+                                  : 'Default Logo',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: (settings.shopLogoUrl != null && settings.shopLogoUrl!.isNotEmpty)
+                                    ? AppTheme.primaryGreen
+                                    : Colors.blue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'This logo appears at the top of customer receipts (thermal & PDF) and invoices. PNG or JPG recommended.',
+                        style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final result = await FilePicker.platform.pickFiles(
+                                type: FileType.image,
+                                allowMultiple: false,
+                              );
+                              if (result != null && result.files.single.path != null) {
+                                final sourceFile = File(result.files.single.path!);
+                                try {
+                                  final savedPath = await LocalMediaStorageService.instance
+                                      .saveLocalImagePermanently(sourceFile, customPrefix: 'shop_logo');
+                                  await notifier.updateShopLogo(savedPath);
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Store logo updated successfully!')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Failed to save logo: $e')),
+                                    );
+                                  }
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.upload_file_rounded, size: 18),
+                            label: const Text('Upload / Change Logo'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                          ),
+                          if (settings.shopLogoUrl != null && settings.shopLogoUrl!.isNotEmpty)
+                            OutlinedButton.icon(
+                              onPressed: () async {
+                                await notifier.updateShopLogo(null);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Store logo removed. Using default template logo.')),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.red),
+                              label: const Text('Remove Logo', style: TextStyle(color: Colors.red)),
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: Colors.red.withValues(alpha: 0.5)),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              ),
+                            ),
+                          OutlinedButton.icon(
+                            onPressed: () => _previewReceipt(settings),
+                            icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                            label: const Text('Preview on Receipt'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Print Logo on Receipts (බිල්පතේ ලාංඡනය මුද්‍රණය කරන්න)',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
+                      Text(
+                        'When enabled, the logo is printed at the top of customer bills',
+                        style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: settings.showReceiptLogo,
+                  activeColor: AppTheme.primaryGreen,
+                  onChanged: (val) => notifier.updateReceiptToggles(showLogo: val),
+                ),
+              ],
+            ),
+          ]),
+          const SizedBox(height: 24),
+
+          // 2. Business Info Card
           _buildCard(cardBg, borderColor, [
             Text(
               'Store Information',

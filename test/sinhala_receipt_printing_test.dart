@@ -374,5 +374,29 @@ void main() {
       expect(enL10n.ourPrice, 'Our Price');
       expect(enL10n.discount, 'Discount');
     });
+
+    test('11. Receipt Image Generation with showReceiptLogo produces bitmap with store logo', () async {
+      final settingsWithLogo = baseSettings.copyWith(
+        printerPaperSize: '58mm',
+        showReceiptLogo: true,
+      );
+      final Uint8List pngBytes = await ReceiptImageGenerator.instance.generateReceiptImage(
+        sale: sampleSale,
+        items: sampleItems,
+        settings: settingsWithLogo,
+        cashReceived: 1500.0,
+        change: 50.0,
+      );
+
+      expect(pngBytes, isNotEmpty);
+      final decoded = img.decodeImage(pngBytes);
+      expect(decoded, isNotNull);
+      expect(decoded!.width, 384);
+      // Receipt with logo has additional vertical height compared to logo-free receipt
+      expect(decoded.height, greaterThan(240));
+
+      // Save artifact for visual inspection
+      File('test_receipt_with_logo_58mm.png').writeAsBytesSync(pngBytes);
+    });
   });
 }

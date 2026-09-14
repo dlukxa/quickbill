@@ -1,12 +1,16 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import '../models/sale.dart';
 import '../models/sale_item.dart';
 import '../providers/preference_provider.dart';
 import '../utils/receipt_theme.dart';
 import '../widgets/receipt/receipt_widget.dart';
+import 'local_media_storage_service.dart';
 
 /// High-performance Flutter receipt rendering engine.
 /// Renders the Flutter [ReceiptWidget] directly into an image using Flutter's
@@ -59,6 +63,20 @@ class ReceiptImageGenerator {
         (overridePaperSize == null && settings.is58mm);
     final double targetWidth = ReceiptTheme.getReceiptWidth(is58mm);
 
+    ui.Image? logoUiImage;
+    if (settings.showReceiptLogo) {
+      final logoBytes = await _loadLogoBytes(settings.shopLogoUrl);
+      if (logoBytes != null && logoBytes.isNotEmpty) {
+        try {
+          final codec = await ui.instantiateImageCodec(logoBytes);
+          final frame = await codec.getNextFrame();
+          logoUiImage = frame.image;
+        } catch (e) {
+          debugPrint('ReceiptImageGenerator: Failed to decode logo image: $e');
+        }
+      }
+    }
+
     final widget = ReceiptWidget(
       sale: sale,
       items: items,
@@ -68,14 +86,60 @@ class ReceiptImageGenerator {
       overridePaperSize: overridePaperSize,
       overrideLanguage: overrideLanguage,
       overrideTemplate: overrideTemplate,
+      logoUiImage: logoUiImage,
     );
 
-    return renderWidgetToImage(
-      widget,
-      targetWidth: targetWidth,
-      pixelRatio: pixelRatio,
-    );
+    try {
+      return await renderWidgetToImage(
+        widget,
+        targetWidth: targetWidth,
+        pixelRatio: pixelRatio,
+      );
+    } finally {
+      logoUiImage?.dispose();
+    }
   }
+
+  Future<Uint8List?> _loadLogoBytes(String? shopLogoUrl) async {
+    if (shopLogoUrl != null && shopLogoUrl.trim().isNotEmpty) {
+      final trimmed = shopLogoUrl.trim();
+      // 1. If local file
+      if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+        try {
+          final file = File(trimmed);
+          if (await file.exists()) {
+            final bytes = await file.readAsBytes();
+            if (bytes.isNotEmpty) return bytes;
+          }
+        } catch (_) {}
+      } else {
+        // 2. If remote URL, check cached file or download
+        try {
+          final file = await LocalMediaStorageService.instance.getOrDownloadImage(trimmed);
+          if (file != null && await file.exists()) {
+            final bytes = await file.readAsBytes();
+            if (bytes.isNotEmpty) return bytes;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 3. Fallback to default asset logo
+    try {
+      final byteData = await rootBundle.load('assets/images/logo.png');
+      return byteData.buffer.asUint8List();
+    } catch (_) {
+      // If rootBundle fails (e.g. in test environment), try direct file read
+      try {
+        final fallbackFile = File('assets/images/logo.png');
+        if (fallbackFile.existsSync()) {
+          return fallbackFile.readAsBytesSync();
+        }
+      } catch (_) {}
+      return null;
+    }
+  }
+
 
   /// Low-level offscreen widget-to-image rasterizer using Flutter's [PipelineOwner].
   Future<Uint8List> renderWidgetToImage(

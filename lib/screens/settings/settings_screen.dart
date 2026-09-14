@@ -43,6 +43,14 @@ import '../../widgets/cloud_backups_sheet.dart';
 import '../desktop/link_to_pc_screen.dart';
 import 'subscription_settings_screen.dart';
 
+ImageProvider _getShopLogoImageProvider(String urlOrPath) {
+  final trimmed = urlOrPath.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return NetworkImage(trimmed);
+  }
+  return FileImage(File(trimmed));
+}
+
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -308,7 +316,7 @@ class SettingsScreen extends ConsumerWidget {
               ],
               image: settings.shopLogoUrl != null
                 ? DecorationImage(
-                    image: NetworkImage(settings.shopLogoUrl!),
+                    image: _getShopLogoImageProvider(settings.shopLogoUrl!),
                     fit: BoxFit.cover,
                   )
                 : null,
@@ -476,7 +484,7 @@ class _ShopSettingsPage extends ConsumerWidget {
                       shape: BoxShape.circle,
                       image: settings.shopLogoUrl != null
                           ? DecorationImage(
-                              image: NetworkImage(settings.shopLogoUrl!),
+                              image: _getShopLogoImageProvider(settings.shopLogoUrl!),
                               fit: BoxFit.cover,
                             )
                           : null,

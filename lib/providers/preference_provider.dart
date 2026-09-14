@@ -103,6 +103,7 @@ class AppSettings {
     bool? isSetupComplete,
     bool? autoSync,
     String? shopLogoUrl,
+    bool clearShopLogo = false,
     bool? isDarkMode,
     String? entityCode,
     double? serviceChargeRate,
@@ -144,7 +145,7 @@ class AppSettings {
       businessType: businessType ?? this.businessType,
       isSetupComplete: isSetupComplete ?? this.isSetupComplete,
       autoSync: autoSync ?? this.autoSync,
-      shopLogoUrl: shopLogoUrl ?? this.shopLogoUrl,
+      shopLogoUrl: clearShopLogo ? null : (shopLogoUrl ?? this.shopLogoUrl),
       isDarkMode: isDarkMode ?? this.isDarkMode,
       entityCode: entityCode ?? this.entityCode,
       serviceChargeRate: serviceChargeRate ?? this.serviceChargeRate,
@@ -376,10 +377,11 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   Future<void> updateShopLogo(String? url) async {
     if (url != null) {
       await _prefs.setString(_keyShopLogoUrl, url);
+      state = state.copyWith(shopLogoUrl: url);
     } else {
       await _prefs.remove(_keyShopLogoUrl);
+      state = state.copyWith(clearShopLogo: true);
     }
-    state = state.copyWith(shopLogoUrl: url);
     await _syncToCloud();
   }
 

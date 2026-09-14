@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -13,6 +14,7 @@ import '../models/purchase.dart';
 import '../utils/formatters.dart';
 import '../utils/pos_l10n.dart';
 import '../providers/preference_provider.dart';
+import 'local_media_storage_service.dart';
 import 'receipt_image_generator.dart';
 
 class PdfService {
@@ -28,6 +30,62 @@ class PdfService {
   Future<void> preWarmFonts() async {
     if (_theme != null || _fontLoadAttempted) return;
     await _getTheme();
+  }
+
+  Future<pw.ImageProvider?> _loadPdfLogoImage(
+    String? shopLogoUrl, {
+    bool fallbackToDefault = true,
+  }) async {
+    if (shopLogoUrl != null && shopLogoUrl.trim().isNotEmpty) {
+      final trimmed = shopLogoUrl.trim();
+      // 1. Check local file
+      if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+        try {
+          final file = File(trimmed);
+          if (await file.exists()) {
+            final bytes = await file.readAsBytes();
+            if (bytes.isNotEmpty) return pw.MemoryImage(bytes);
+          }
+        } catch (e) {
+          debugPrint('PdfService: Error reading local logo: $e');
+        }
+      } else {
+        // 2. Remote URL - check local cache or download
+        try {
+          final cachedFile = await LocalMediaStorageService.instance.getOrDownloadImage(trimmed);
+          if (cachedFile != null && await cachedFile.exists()) {
+            final bytes = await cachedFile.readAsBytes();
+            if (bytes.isNotEmpty) return pw.MemoryImage(bytes);
+          }
+        } catch (e) {
+          debugPrint('PdfService: Error loading cached logo: $e');
+        }
+        try {
+          return await networkImage(trimmed);
+        } catch (e) {
+          debugPrint('PdfService: Error loading network logo: $e');
+        }
+      }
+    }
+
+    // 3. Fallback to default asset logo
+    if (fallbackToDefault) {
+      try {
+        final data = await rootBundle.load('assets/images/logo.png');
+        final bytes = data.buffer.asUint8List();
+        if (bytes.isNotEmpty) return pw.MemoryImage(bytes);
+      } catch (_) {
+        try {
+          final file = File('assets/images/logo.png');
+          if (file.existsSync()) {
+            final bytes = file.readAsBytesSync();
+            if (bytes.isNotEmpty) return pw.MemoryImage(bytes);
+          }
+        } catch (_) {}
+      }
+    }
+
+    return null;
   }
 
   Future<pw.ThemeData> _getTheme() async {
@@ -360,8 +418,11 @@ class PdfService {
         ? (sale.total - effectiveCashReceived).clamp(0.0, double.infinity)
         : (sale.paymentMethod.toLowerCase() == 'credit' ? sale.total : 0.0);
 
+    final pw.ImageProvider? logoImage = showLogo ? await _loadPdfLogoImage(shopLogoUrl) : null;
+    final bool hasLogo = logoImage != null;
+
     // Height calculation calibrated to content
-    final double headerHeightMm = (showLogo && shopLogoUrl != null && shopLogoUrl.isNotEmpty ? (is58mm ? 18.0 : 24.0) : 0.0)
+    final double headerHeightMm = (hasLogo ? (is58mm ? 18.0 : 24.0) : 0.0)
         + 8.0 // Store name
         + (shopAddress.isNotEmpty ? 4.5 : 0.0)
         + (shopPhone.isNotEmpty ? 4.5 : 0.0)
@@ -413,14 +474,7 @@ class PdfService {
       marginRight: pageMargin.right,
     );
 
-    pw.ImageProvider? logoImage;
-    if (showLogo && shopLogoUrl != null && shopLogoUrl.isNotEmpty) {
-      try {
-        logoImage = await networkImage(shopLogoUrl);
-      } catch (e) {
-        debugPrint('Error loading shop logo for receipt: $e');
-      }
-    }
+
 
     pw.Widget buildSummaryRow(String label, String value, {double fontSize = 7.5, bool isBold = false, PdfColor? color}) {
       return pw.Row(
@@ -873,8 +927,11 @@ class PdfService {
         ? (sale.total - effectiveCashReceived).clamp(0.0, double.infinity)
         : (sale.paymentMethod.toLowerCase() == 'credit' ? sale.total : 0.0);
 
+    final pw.ImageProvider? logoImage = showLogo ? await _loadPdfLogoImage(shopLogoUrl) : null;
+    final bool hasLogo = logoImage != null;
+
     // Accurate thermal receipt height calculation
-    final double headerHeightMm = (showLogo && shopLogoUrl != null && shopLogoUrl.isNotEmpty ? (is58mm ? 18.0 : 24.0) : 0.0)
+    final double headerHeightMm = (hasLogo ? (is58mm ? 18.0 : 24.0) : 0.0)
         + 8.0 // Store name
         + (shopAddress.isNotEmpty ? 5.0 : 0.0)
         + (shopPhone.isNotEmpty ? 4.5 : 0.0)
@@ -920,14 +977,7 @@ class PdfService {
       marginRight: pageMargin.right,
     );
 
-    pw.ImageProvider? logoImage;
-    if (showLogo && shopLogoUrl != null && shopLogoUrl.isNotEmpty) {
-      try {
-        logoImage = await networkImage(shopLogoUrl);
-      } catch (e) {
-        debugPrint('Error loading shop logo for receipt: $e');
-      }
-    }
+
 
     doc.addPage(
       pw.Page(
@@ -1357,14 +1407,7 @@ class PdfService {
     final footer = settings?.receiptFooter ?? 'Thank you for your business!';
     final shopLogoUrl = settings?.shopLogoUrl;
 
-    pw.ImageProvider? logoImage;
-    if (shopLogoUrl != null) {
-      try {
-        logoImage = await networkImage(shopLogoUrl);
-      } catch (e) {
-        debugPrint('Error loading shop logo for invoice: $e');
-      }
-    }
+    final pw.ImageProvider? logoImage = await _loadPdfLogoImage(shopLogoUrl);
 
     doc.addPage(
       pw.MultiPage(
