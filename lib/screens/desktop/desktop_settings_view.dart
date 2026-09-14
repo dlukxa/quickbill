@@ -686,8 +686,8 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                   child: SwitchListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Customer Savings (ලාභය)'),
-                    subtitle: const Text('Display customer profit / savings'),
+                    title: const Text('Customer Savings (සම්පූර්ණ ලාභය)'),
+                    subtitle: const Text('Display customer profit / total savings breakdown'),
                     value: settings.showReceiptDiscount,
                     activeThumbColor: AppTheme.primaryGreen,
                     onChanged: (val) => notifier.updateReceiptToggles(showDiscount: val),

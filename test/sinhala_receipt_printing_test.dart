@@ -346,9 +346,10 @@ void main() {
       expect(find.text('කිරිපිටි'), findsOneWidget);
       expect(find.text('Rice 5kg'), findsOneWidget);
 
-      // Verify Sri Lankan retail labels: "අපේ මිල" and "ලාභය"
+      // Verify Sri Lankan retail labels: "අපේ මිල" and "සම්පූර්ණ ලාභය"
       expect(find.text('අපේ මිල'), findsOneWidget);
-      expect(find.text('ලාභය'), findsWidgets);
+      expect(find.text('සම්පූර්ණ ලාභය'), findsOneWidget);
+      expect(find.textContaining('ලාභය'), findsWidgets);
 
       // Toggle width to 58mm
       await tester.tap(find.text('58mm'));

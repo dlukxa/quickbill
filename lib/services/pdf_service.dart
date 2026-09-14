@@ -696,8 +696,8 @@ class PdfService {
               // ── 5. FINANCIAL BREAKDOWN ──
               buildSummaryRow(l10n.subtotal, Formatters.number(grossStandardTotal > 0 ? grossStandardTotal : subtotalOurPrice, decimalPlaces: 2), fontSize: bodyFontSize),
               if (showDiscount && totalDiscount > 0) ...[
-                pw.SizedBox(height: 1.0),
-                buildSummaryRow(l10n.totalSavings, Formatters.number(totalDiscount, decimalPlaces: 2), fontSize: bodyFontSize + 1.0, isBold: true),
+                pw.SizedBox(height: 1.5),
+                buildSummaryRow(l10n.totalProfit, '-${Formatters.number(totalDiscount, decimalPlaces: 2)}', fontSize: bodyFontSize + 1.5, isBold: true),
               ],
               pw.SizedBox(height: 1.0),
               buildSummaryRow(l10n.returns, '0.00', fontSize: bodyFontSize),
@@ -1181,14 +1181,17 @@ class PdfService {
                 ],
               ),
               if (totalDiscount > 0) ...[
-                pw.SizedBox(height: 1.0),
+                pw.SizedBox(height: 1.5),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text('${l10n.totalSavings}:', style: pw.TextStyle(fontSize: bodyFontSize + 1.0, fontWeight: pw.FontWeight.bold)),
+                    pw.Text(
+                      '${l10n.totalProfit}:',
+                      style: pw.TextStyle(fontSize: bodyFontSize + 1.5, fontWeight: pw.FontWeight.bold),
+                    ),
                     pw.Text(
                       '-${Formatters.number(totalDiscount, decimalPlaces: 2)}',
-                      style: pw.TextStyle(fontSize: bodyFontSize + 1.0, fontWeight: pw.FontWeight.bold),
+                      style: pw.TextStyle(fontSize: bodyFontSize + 1.5, fontWeight: pw.FontWeight.bold),
                     ),
                   ],
                 ),

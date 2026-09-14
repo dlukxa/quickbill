@@ -2303,7 +2303,7 @@ class _ReceiptSettingsPage extends ConsumerWidget {
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
-                  title: const Text('Discount & Customer Savings (ලාභය)'),
+                  title: const Text('Discount & Customer Savings (සම්පූර්ණ ලාභය)'),
                   subtitle: const Text('Display customer profit / total savings breakdown'),
                   value: settings.showReceiptDiscount,
                   activeThumbColor: AppTheme.primaryGreen,
