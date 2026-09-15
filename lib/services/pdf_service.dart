@@ -201,7 +201,11 @@ class PdfService {
         change: change,
         overridePaperSize: overridePaperSize,
       );
-      return buildImageReceiptDocument(pngBytes, is58mm: is58mm);
+      return buildImageReceiptDocument(
+        pngBytes,
+        is58mm: is58mm,
+        customWidthMm: effectiveSettings.effectivePaperWidthMm,
+      );
     }
 
     final template = settings?.receiptTemplate ?? 'sri_lankan_retail';
@@ -273,10 +277,12 @@ class PdfService {
   Future<pw.Document> buildImageReceiptDocument(
     Uint8List pngBytes, {
     required bool is58mm,
+    double? customWidthMm,
   }) async {
     final doc = pw.Document();
     final image = pw.MemoryImage(pngBytes);
-    final double pageWidth = (is58mm ? 58.0 : 80.0) * PdfPageFormat.mm;
+    final double widthMm = customWidthMm ?? (is58mm ? 58.0 : 80.0);
+    final double pageWidth = widthMm * PdfPageFormat.mm;
 
     // Decode image to compute proper page aspect ratio
     final decoded = img.decodeImage(pngBytes);

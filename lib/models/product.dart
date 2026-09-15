@@ -19,6 +19,9 @@ class Product {
   final String type;  // 'product', 'service', 'package'
   final String? imageUrl;
   final bool trackBatches;  // Enable batch tracking
+  final DateTime? expiryDate; // Direct expiry date for simple products (or earliest active batch)
+  final String? taxStatus; // 'taxable', 'zero_rated', 'exempt', null = exempt (not opted in to VAT)
+  final double? customTaxRate; // Custom VAT rate override if applicable (null inherits store VAT)
   final int branchId;
   final int? supplierId; // Link product to a default supplier
   final DateTime createdAt;
@@ -57,6 +60,9 @@ class Product {
     this.type = 'product',
     this.imageUrl,
     this.trackBatches = false,
+    this.expiryDate,
+    this.taxStatus = 'exempt',
+    this.customTaxRate,
     this.supplierId,
     this.allowLoose = true,
     this.allowPack = false,
@@ -227,6 +233,9 @@ class Product {
       'type': type,
       'image_url': imageUrl,
       'track_batches': trackBatches ? 1 : 0,
+      'expiry_date': expiryDate?.toIso8601String(),
+      'tax_status': taxStatus,
+      'custom_tax_rate': customTaxRate,
       'supplier_id': supplierId,
       'allow_loose': allowLoose ? 1 : 0,
       'allow_pack': allowPack ? 1 : 0,
@@ -264,6 +273,11 @@ class Product {
       type: map['type'] as String? ?? 'product',
       imageUrl: map['image_url'] as String?,
       trackBatches: (map['track_batches'] as int? ?? 0) == 1,
+      expiryDate: map['expiry_date'] != null
+          ? DateTime.tryParse(map['expiry_date'] as String)
+          : null,
+      taxStatus: map['tax_status'] as String?,
+      customTaxRate: (map['custom_tax_rate'] as num?)?.toDouble(),
       supplierId: map['supplier_id'] as int?,
       allowLoose: (map['allow_loose'] as int? ?? 1) == 1,
       allowPack: (map['allow_pack'] as int? ?? 0) == 1,
@@ -272,8 +286,12 @@ class Product {
       packSize: (map['pack_size'] as num?)?.toDouble() ?? 1.0,
       packUnit: map['pack_unit'] as String? ?? 'pack',
       packSizeUnit: map['pack_size_unit'] as String? ?? 'kg',
-      createdAt: DateTime.parse(map['created_at'] as String),
-      updatedAt: DateTime.parse(map['updated_at'] as String),
+      createdAt: map['created_at'] != null
+          ? (DateTime.tryParse(map['created_at'] as String) ?? DateTime.now())
+          : DateTime.now(),
+      updatedAt: map['updated_at'] != null
+          ? (DateTime.tryParse(map['updated_at'] as String) ?? DateTime.now())
+          : DateTime.now(),
       synced: (map['synced'] as int? ?? 0) == 1,
       deleted: (map['deleted'] as int? ?? 0) == 1,
       totalStock: (map['total_stock'] as num?)?.toDouble(),
@@ -300,6 +318,9 @@ class Product {
       'type': type,
       'image_url': imageUrl,
       'track_batches': trackBatches,
+      'expiry_date': expiryDate?.toIso8601String(),
+      'tax_status': taxStatus,
+      'custom_tax_rate': customTaxRate,
       'supplier_id': supplierId,
       'allow_loose': allowLoose,
       'allow_pack': allowPack,
@@ -332,6 +353,9 @@ class Product {
     String? type,
     String? imageUrl,
     bool? trackBatches,
+    DateTime? expiryDate,
+    String? taxStatus,
+    double? customTaxRate,
     int? supplierId,
     bool? allowLoose,
     bool? allowPack,
@@ -365,6 +389,9 @@ class Product {
       type: type ?? this.type,
       imageUrl: imageUrl ?? this.imageUrl,
       trackBatches: trackBatches ?? this.trackBatches,
+      expiryDate: expiryDate ?? this.expiryDate,
+      taxStatus: taxStatus ?? this.taxStatus,
+      customTaxRate: customTaxRate ?? this.customTaxRate,
       supplierId: supplierId ?? this.supplierId,
       allowLoose: allowLoose ?? this.allowLoose,
       allowPack: allowPack ?? this.allowPack,

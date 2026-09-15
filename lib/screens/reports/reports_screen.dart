@@ -20,6 +20,7 @@ import 'supplier_returns_report_screen.dart';
 import 'employee_reports_screen.dart';
 import 'analytics_dashboard_screen.dart';
 import 'peak_hours_screen.dart';
+import 'vat_report_screen.dart';
 
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
@@ -331,6 +332,11 @@ class ReportsScreen extends ConsumerWidget {
                   icon: Icons.people, color: Colors.teal,
                   title: l10n.employeePerformance, subtitle: l10n.employeePerformanceDesc,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EmployeeReportsScreen())),
+                ),
+                _PremiumReportTile(
+                  icon: Icons.account_balance, color: const Color(0xFF6366F1),
+                  title: 'VAT & Tax Compliance Report', subtitle: 'Taxable, exempt, zero-rated & IRD audit breakdown',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VatReportScreen())),
                 ),
                 _PremiumReportTile(
                   icon: Icons.grid_on, color: AppTheme.primaryPurple,

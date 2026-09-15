@@ -18,6 +18,10 @@ class SaleItem {
   final double? soldQuantity; // Quantity in soldUnit (e.g. 500 for 500g, 1 for 1 pack)
   final String? sellingMode; // 'weight' | 'pack' | 'piece'
   final double? packSize; // e.g. 1.0 (in kg)
+  final String taxStatus; // 'taxable', 'zero_rated', 'exempt'
+  final double taxRate;
+  final double taxAmount;
+  final double taxableAmount;
 
   SaleItem({
     this.id,
@@ -37,6 +41,10 @@ class SaleItem {
     this.soldQuantity,
     this.sellingMode,
     this.packSize,
+    this.taxStatus = 'exempt',
+    this.taxRate = 0.0,
+    this.taxAmount = 0.0,
+    this.taxableAmount = 0.0,
   });
 
   /// Formatted quantity display for receipts and invoices.
@@ -72,6 +80,10 @@ class SaleItem {
       'sold_quantity': soldQuantity,
       'selling_mode': sellingMode,
       'pack_size': packSize,
+      'tax_status': taxStatus,
+      'tax_rate': taxRate,
+      'tax_amount': taxAmount,
+      'taxable_amount': taxableAmount,
     };
   }
 
@@ -94,6 +106,10 @@ class SaleItem {
       soldQuantity: (map['sold_quantity'] as num?)?.toDouble(),
       sellingMode: map['selling_mode'] as String?,
       packSize: (map['pack_size'] as num?)?.toDouble(),
+      taxStatus: map['tax_status'] as String? ?? 'taxable',
+      taxRate: (map['tax_rate'] as num?)?.toDouble() ?? 0.0,
+      taxAmount: (map['tax_amount'] as num?)?.toDouble() ?? 0.0,
+      taxableAmount: (map['taxable_amount'] as num?)?.toDouble() ?? 0.0,
     );
   }
 

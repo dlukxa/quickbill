@@ -1,13 +1,17 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../config/theme.dart';
 import '../models/product.dart';
+import '../models/product_batch.dart';
 import '../providers/product_provider.dart';
 import '../providers/preference_provider.dart';
 import '../providers/supplier_provider.dart';
+import '../providers/expiry_provider.dart';
+import '../services/database_service.dart';
 import '../services/unit_conversion_service.dart';
-import '../utils/formatters.dart';
 import '../utils/pos_l10n.dart';
 import '../utils/region_utils.dart';
 
@@ -62,6 +66,13 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
   bool _showCostDetails = false;
   bool _isSubmitting = false;
 
+  // Expiry & Batch Info
+  DateTime? _expiryDate;
+  final _batchNumberController = TextEditingController();
+  final DateTime? _purchaseDate = DateTime.now();
+  late bool _enableBatchTracking;
+  bool _showExpiryDetails = false;
+
   @override
   void initState() {
     super.initState();
@@ -71,6 +82,11 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
     _packUnit = p.packUnit;
     _packSizeController.text = (p.packSize ?? 1.0).toString();
     _selectedSupplierId = p.supplierId;
+    _enableBatchTracking = p.trackBatches;
+    _expiryDate = p.expiryDate;
+    if (_expiryDate != null || p.trackBatches) {
+      _showExpiryDetails = true;
+    }
     if (p.costPrice != null) {
       _costController.text = p.costPrice!.toStringAsFixed(2);
     }
@@ -91,6 +107,7 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
     _packSizeController.dispose();
     _costController.dispose();
     _notesController.dispose();
+    _batchNumberController.dispose();
     super.dispose();
   }
 
@@ -160,21 +177,65 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
         }
       }
 
-      await ref.read(productActionsProvider).adjustStock(
-        productId: p.id!,
-        quantityChange: addedQty,
-        notes: noteText,
-      );
-
       final newCost = double.tryParse(_costController.text.trim());
-      if ((newCost != null && newCost > 0 && newCost != p.costPrice) ||
-          (_selectedSupplierId != null && _selectedSupplierId != p.supplierId)) {
+      final shouldCreateBatch = (_enableBatchTracking || p.trackBatches || _batchNumberController.text.trim().isNotEmpty) && _expiryDate != null;
+
+      if (shouldCreateBatch) {
+        final batchNo = _batchNumberController.text.trim().isNotEmpty
+            ? _batchNumberController.text.trim()
+            : ProductBatch.generateBatchNumber('BAT', DateTime.now());
+
+        final uniqueBarcode = '${p.baseBarcode ?? p.id}-$batchNo';
+
+        final newBatch = ProductBatch(
+          branchId: p.branchId,
+          productId: p.id!,
+          batchNumber: batchNo,
+          barcode: uniqueBarcode,
+          stock: addedQty,
+          initialStock: addedQty,
+          expiryDate: _expiryDate,
+          purchaseDate: _purchaseDate,
+          purchasePrice: newCost ?? p.costPrice,
+          supplierName: _selectedSupplierId?.toString(),
+          notes: noteText,
+        );
+
+        await DatabaseService.instance.addProductBatch(newBatch);
+
+        // Also adjust product stock so stock counts remain consistent
+        await DatabaseService.instance.adjustStock(
+          productId: p.id!,
+          branchId: p.branchId,
+          quantityChange: addedQty,
+          notes: noteText,
+        );
+
+        final updatedProduct = p.copyWith(
+          trackBatches: true,
+          costPrice: newCost ?? p.costPrice,
+          supplierId: _selectedSupplierId ?? p.supplierId,
+          expiryDate: _expiryDate,
+        );
+        await ref.read(productActionsProvider).updateProduct(updatedProduct);
+      } else {
+        await ref.read(productActionsProvider).adjustStock(
+          productId: p.id!,
+          quantityChange: addedQty,
+          notes: noteText,
+        );
+
         final updatedProduct = p.copyWith(
           costPrice: newCost ?? p.costPrice,
           supplierId: _selectedSupplierId ?? p.supplierId,
+          expiryDate: _expiryDate ?? p.expiryDate,
         );
         await ref.read(productActionsProvider).updateProduct(updatedProduct);
       }
+
+      ref.invalidate(stockExpiryItemsProvider);
+      ref.invalidate(productsProvider);
+      ref.invalidate(lowStockProductsProvider);
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -742,6 +803,215 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
               ),
               const SizedBox(height: 16),
 
+              // ─── Expiry & Batch Tracking Section ───
+              InkWell(
+                onTap: () => setState(() => _showExpiryDetails = !_showExpiryDetails),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _expiryDate != null 
+                        ? const Color(0xFFF59E0B).withValues(alpha: isDark ? 0.15 : 0.08)
+                        : (isDark ? Colors.white.withValues(alpha: 0.03) : const Color(0xFFF1F5F9)),
+                    borderRadius: BorderRadius.circular(10),
+                    border: _expiryDate != null 
+                        ? Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4))
+                        : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.event_note_rounded,
+                        size: 18,
+                        color: _expiryDate != null ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _expiryDate != null
+                              ? 'Expiry: ${DateFormat('yyyy-MM-dd').format(_expiryDate!)} (${_enableBatchTracking ? "Batch tracked" : "Product expiry"})'
+                              : 'Set Expiry Date & Batch Number (Optional)',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: _expiryDate != null ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Icon(
+                        _showExpiryDetails ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                        size: 20,
+                        color: _expiryDate != null ? const Color(0xFFF59E0B) : subColor,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (_showExpiryDetails) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: borderColor),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Expiry Date Header & Picker Row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Expiry Date',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: subColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                InkWell(
+                                  onTap: () async {
+                                    final now = DateTime.now();
+                                    final picked = await showDatePicker(
+                                      context: context,
+                                      initialDate: _expiryDate ?? now.add(const Duration(days: 90)),
+                                      firstDate: DateTime(now.year - 1),
+                                      lastDate: DateTime(now.year + 10),
+                                    );
+                                    if (picked != null) {
+                                      setState(() {
+                                        _expiryDate = picked;
+                                        if (_batchNumberController.text.trim().isEmpty) {
+                                          final prefix = widget.product.name.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+                                          final pfx = prefix.isNotEmpty ? prefix.substring(0, min(3, prefix.length)) : 'BAT';
+                                          _batchNumberController.text = '$pfx-${picked.year}${picked.month.toString().padLeft(2, '0')}${picked.day.toString().padLeft(2, '0')}';
+                                        }
+                                      });
+                                    }
+                                  },
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: borderColor),
+                                      borderRadius: BorderRadius.circular(10),
+                                      color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(Icons.calendar_today_rounded, size: 16, color: _expiryDate != null ? const Color(0xFFF59E0B) : subColor),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _expiryDate != null
+                                                  ? DateFormat('yyyy-MM-dd').format(_expiryDate!)
+                                                  : 'Select Expiry Date',
+                                              style: GoogleFonts.plusJakartaSans(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: _expiryDate != null ? textColor : subColor,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (_expiryDate != null)
+                                          GestureDetector(
+                                            onTap: () => setState(() => _expiryDate = null),
+                                            child: Icon(Icons.close_rounded, size: 16, color: subColor),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Batch Number (Optional)',
+                                  style: GoogleFonts.plusJakartaSans(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: subColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                TextFormField(
+                                  controller: _batchNumberController,
+                                  style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w600, color: textColor),
+                                  decoration: InputDecoration(
+                                    hintText: 'e.g. BAT-001',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: borderColor)),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // Expiry Preset Quick Chips
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          _buildExpiryPresetChip('+1 Mo', const Duration(days: 30)),
+                          _buildExpiryPresetChip('+3 Mo', const Duration(days: 90)),
+                          _buildExpiryPresetChip('+6 Mo', const Duration(days: 180)),
+                          _buildExpiryPresetChip('+1 Yr', const Duration(days: 365)),
+                          _buildExpiryPresetChip('+2 Yr', const Duration(days: 730)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      // Batch tracking switch
+                      InkWell(
+                        onTap: () => setState(() => _enableBatchTracking = !_enableBatchTracking),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: Checkbox(
+                                value: _enableBatchTracking,
+                                activeColor: const Color(0xFF10B981),
+                                onChanged: (val) => setState(() => _enableBatchTracking = val ?? false),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Track as distinct batch with FEFO (First-Expired-First-Out)',
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: subColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+
               // Expandable Optional Cost & Supplier Info
               InkWell(
                 onTap: () => setState(() => _showCostDetails = !_showCostDetails),
@@ -971,6 +1241,49 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
             fontSize: 12,
             fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
             color: isSelected ? Colors.white : (widget.isDark ? const Color(0xFFE2E8F0) : const Color(0xFF334155)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpiryPresetChip(String label, Duration duration) {
+    final now = DateTime.now();
+    final targetDate = now.add(duration);
+    final isSelected = _expiryDate != null &&
+        _expiryDate!.year == targetDate.year &&
+        _expiryDate!.month == targetDate.month &&
+        _expiryDate!.day == targetDate.day;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _expiryDate = targetDate;
+          if (_batchNumberController.text.trim().isEmpty) {
+            final prefix = widget.product.name.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+            final pfx = prefix.isNotEmpty ? prefix.substring(0, min(3, prefix.length)) : 'BAT';
+            _batchNumberController.text = '$pfx-${targetDate.year}${targetDate.month.toString().padLeft(2, '0')}${targetDate.day.toString().padLeft(2, '0')}';
+          }
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFFF59E0B)
+              : (widget.isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? const Color(0xFFF59E0B) : (widget.isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+          ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.plusJakartaSans(
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+            color: isSelected ? Colors.white : (widget.isDark ? Colors.white70 : const Color(0xFF334155)),
           ),
         ),
       ),

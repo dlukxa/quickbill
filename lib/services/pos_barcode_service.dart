@@ -56,6 +56,21 @@ class BarcodeScanResult {
       message: 'Product not found: $barcode',
     );
   }
+
+  factory BarcodeScanResult.expired({
+    required Product product,
+    ProductBatch? batch,
+    required String barcode,
+  }) {
+    final batchInfo = batch != null ? ' (Batch: ${batch.batchNumber})' : '';
+    return BarcodeScanResult(
+      isSuccess: false,
+      product: product,
+      batch: batch,
+      barcode: barcode,
+      message: '⚠️ Expired stock: ${product.sinhalaOrName}$batchInfo is expired! Cannot sell expired goods.',
+    );
+  }
 }
 
 /// Centralized barcode scan-to-cart service for QuickBill POS
@@ -147,6 +162,24 @@ class PosBarcodeService {
         : (p.isVariableQuantity ? 'weight' : 'piece');
     final effectiveUnit = sellingMode == 'pack' ? (p.packUnit.isNotEmpty ? p.packUnit : 'pack') : p.baseUnit;
     final customPrice = sellingMode == 'pack' ? p.packPrice : null;
+
+    // Check for expired batch or product
+    final isBatchExpired = foundBatch != null && foundBatch.isExpired;
+    DateTime? exp = foundBatch?.expiryDate ?? p.expiryDate;
+    final isProductExpired = exp != null && DateTime.now().isAfter(exp);
+    if (isBatchExpired || isProductExpired) {
+      if (playSound) {
+        try {
+          SystemSound.play(SystemSoundType.alert);
+          HapticFeedback.heavyImpact();
+        } catch (_) {}
+      }
+      return BarcodeScanResult.expired(
+        product: p,
+        batch: foundBatch,
+        barcode: clean,
+      );
+    }
 
     // 5. Add to cart (automatically increments quantity if already present)
     ref.read(cartProvider.notifier).addProduct(

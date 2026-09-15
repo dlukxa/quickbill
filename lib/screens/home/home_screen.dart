@@ -29,6 +29,7 @@ import 'smart_campaign_widget.dart';
 import '../appointments/appointments_calendar_screen.dart';
 import '../appointments/staff_schedule_screen.dart';
 import '../orders/orders_board_screen.dart';
+import '../desktop/link_to_pc_screen.dart';
 
 import '../../providers/forecasting_provider.dart';
 import '../../providers/customer_insights_provider.dart';
@@ -229,6 +230,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: BranchSwitcher(),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner_rounded),
+            tooltip: 'Link to PC Terminal',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LinkToPcScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: Icon(Icons.switch_account),
             tooltip: AppLocalizations.of(context)!.switchUser,

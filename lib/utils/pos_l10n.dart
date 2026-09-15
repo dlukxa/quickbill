@@ -48,6 +48,7 @@ class PosL10n {
   String get cartIsEmpty => isSi ? 'බිල හිස්ව පවතී' : isTa ? 'பில் காலியாக உள்ளது' : isHi ? 'कार्ट खाली है' : isBn ? 'কার্ট খালি' : 'Cart is empty';
   String get scanOrTapProduct => isSi ? 'භාණ්ඩයක් ස්කෑන් හෝ තෝරන්න' : isTa ? 'பொருளை ஸ்கேன் செய்யவும் அல்லது தேர்ந்தெடுக்கவும்' : isHi ? 'स्कैन करें या उत्पाद चुनें' : isBn ? 'পণ্য স্ক্যান বা নির্বাচন করুন' : 'Scan or tap a product';
   String get subtotal => isSi ? 'උප එකතුව' : isTa ? 'உப மொத்தம்' : isHi ? 'उप-योग' : isBn ? 'উপ-মোট' : 'Subtotal';
+  String get discount => isSi ? 'වට්ටම්' : isTa ? 'தள்ளுபடி' : isHi ? 'छूट' : isBn ? 'ছাড়' : 'Discount';
   String get total => isSi ? 'මුළු එකතුව' : isTa ? 'மொத்த தொகை' : isHi ? 'कुल योग' : isBn ? 'সর্বমোট' : 'Total';
   String get checkout => isSi ? 'ගෙවීම ලබාගන්න (F12)' : isTa ? 'செக்அவுட் (F12)' : isHi ? 'चेकआउट (F12)' : isBn ? 'চেকআউট (F12)' : 'Checkout  (F12)';
 
@@ -448,6 +449,20 @@ class ReceiptL10n {
           : isBilingual
               ? 'බදු / Tax (VAT)'
               : 'Tax (VAT)';
+
+  String get taxInvoice => isSi
+      ? 'බදු ඉන්වොයිසිය (TAX INVOICE)'
+      : isTa
+          ? 'வரி விலைப்பட்டியல் (TAX INVOICE)'
+          : 'TAX INVOICE';
+
+  String get tin => isSi ? 'TIN අංකය' : isTa ? 'TIN எண்' : isBilingual ? 'TIN අංකය / TIN' : 'TIN';
+  String get vatRegNo => isSi ? 'VAT ලියාපදිංචි අංකය' : isTa ? 'VAT பதிவு எண்' : isBilingual ? 'VAT අංකය / VAT Reg No' : 'VAT Reg No';
+  String get taxableBase => isSi ? 'බදු අයවන එකතුව' : isTa ? 'வரிக்குரிய தொகை' : isBilingual ? 'බදු අයවන එකතුව / Taxable Base' : 'Taxable Base';
+  String get exemptAmount => isSi ? 'බදුවලින් නිදහස්' : isTa ? 'வரி விலக்கு' : isBilingual ? 'නිදහස් / Exempt' : 'Exempt';
+  String get zeroRatedAmount => isSi ? 'ශුන්‍ය බදු' : isTa ? 'பூஜ்ஜிய வரி' : isBilingual ? 'ශුන්‍ය බදු / Zero-Rated' : 'Zero-Rated';
+  String get buyerTin => isSi ? 'පාරිභෝගික TIN' : isTa ? 'வாங்குபவர் TIN' : isBilingual ? 'පාරිභෝගික TIN / Buyer TIN' : 'Buyer TIN';
+  String get buyerVatNo => isSi ? 'පාරිභෝගික VAT' : isTa ? 'வாங்குபவர் VAT' : isBilingual ? 'පාරිභෝගික VAT / Buyer VAT' : 'Buyer VAT';
 
   String get serviceCharge => isSi
       ? 'සේවා ගාස්තු'

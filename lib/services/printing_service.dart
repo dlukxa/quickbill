@@ -171,6 +171,7 @@ class PrintingService {
         final doc = await PdfService.instance.buildImageReceiptDocument(
           pngBytes,
           is58mm: settings.is58mm,
+          customWidthMm: settings.effectivePaperWidthMm,
         );
         pdfBytes = await doc.save();
       } else {
@@ -227,7 +228,7 @@ class PrintingService {
 
       socket = await Socket.connect(ip, port, timeout: const Duration(seconds: 4));
 
-      final int targetWidth = settings.is58mm ? 384 : 576;
+      final int targetWidth = settings.effectiveReceiptWidthPx.toInt();
       final pngBytes = await ReceiptImageGenerator.instance.generateReceiptImage(
         sale: sale,
         items: items,
@@ -370,7 +371,7 @@ class PrintingService {
     double? change,
   }) async {
     try {
-      final int targetWidth = settings.is58mm ? 384 : 576;
+      final int targetWidth = settings.effectiveReceiptWidthPx.toInt();
       final pngBytes = await ReceiptImageGenerator.instance.generateReceiptImage(
         sale: sale,
         items: items,

@@ -48,20 +48,28 @@ class ReceiptWidget extends StatelessWidget {
   String get language =>
       overrideLanguage ?? settings.receiptLanguage;
 
+  bool get isTaxInvoice =>
+      sale.invoiceType == 'tax_invoice' ||
+      (sale.invoiceType == null && settings.vatInvoiceMode == 'tax_invoice');
+
+  bool get isVatActive => sale.isVatEnabled || settings.isVatEnabled;
+
   String get template =>
       overrideTemplate ?? settings.receiptTemplate;
 
   @override
   Widget build(BuildContext context) {
-    final double targetWidth = ReceiptTheme.getReceiptWidth(is58mm);
+    final double targetWidth = ReceiptTheme.getReceiptWidth(is58mm, settings: settings);
     final l10n = ReceiptL10n.of(language);
 
     return Container(
       width: targetWidth,
       color: Colors.white,
-      padding: EdgeInsets.symmetric(
-        horizontal: is58mm ? 10.0 : 16.0,
-        vertical: 12.0,
+      padding: EdgeInsets.only(
+        left: settings.marginLeftPx,
+        right: settings.marginRightPx,
+        top: settings.marginTopPx,
+        bottom: settings.marginBottomPx,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -111,35 +119,79 @@ class ReceiptWidget extends StatelessWidget {
     final shopAddress = settings.shopAddress;
     final shopPhone = settings.shopPhone;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        if (settings.showReceiptLogo) ...[
-          _buildStoreLogo(),
-          const SizedBox(height: 4),
-        ],
-        Text(
-          shopName,
-          textAlign: TextAlign.center,
-          style: ReceiptTheme.storeTitle(is58mm),
-        ),
-        if (shopAddress.isNotEmpty) ...[
-          const SizedBox(height: 2),
+    final headerAlign = settings.receiptHeaderAlignment;
+    final crossAlign = headerAlign == 'left'
+        ? CrossAxisAlignment.start
+        : (headerAlign == 'right' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
+    final textAlign = headerAlign == 'left'
+        ? TextAlign.left
+        : (headerAlign == 'right' ? TextAlign.right : TextAlign.center);
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: settings.receiptHeaderSpacing / 2),
+      child: Column(
+        crossAxisAlignment: crossAlign,
+        children: [
+          if (settings.showReceiptLogo) ...[
+            _buildStoreLogo(),
+            const SizedBox(height: 4),
+          ],
+          if (isTaxInvoice) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.black, width: 1.5),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                l10n.taxInvoice,
+                textAlign: TextAlign.center,
+                style: ReceiptTheme.metaText(is58mm, isBold: true, settings: settings),
+              ),
+            ),
+          ],
           Text(
-            shopAddress,
-            textAlign: TextAlign.center,
-            style: ReceiptTheme.storeSubtitle(is58mm),
+            shopName,
+            textAlign: textAlign,
+            style: ReceiptTheme.storeTitle(is58mm, settings: settings),
           ),
+          if (settings.showReceiptAddress && shopAddress.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              shopAddress,
+              textAlign: textAlign,
+              style: ReceiptTheme.storeSubtitle(is58mm, settings: settings),
+            ),
+          ],
+          if (settings.showReceiptPhone && shopPhone.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              '${l10n.phone}: $shopPhone',
+              textAlign: textAlign,
+              style: ReceiptTheme.storeSubtitle(is58mm, settings: settings),
+            ),
+          ],
+          if (isTaxInvoice || (isVatActive && settings.taxIdentificationNumber.isNotEmpty)) ...[
+            if (settings.taxIdentificationNumber.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                '${l10n.tin}: ${settings.taxIdentificationNumber}',
+                textAlign: textAlign,
+                style: ReceiptTheme.storeSubtitle(is58mm, settings: settings),
+              ),
+            ],
+            if (settings.vatRegistrationNumber.isNotEmpty) ...[
+              const SizedBox(height: 1),
+              Text(
+                '${l10n.vatRegNo}: ${settings.vatRegistrationNumber}',
+                textAlign: textAlign,
+                style: ReceiptTheme.storeSubtitle(is58mm, settings: settings),
+              ),
+            ],
+          ],
         ],
-        if (shopPhone.isNotEmpty) ...[
-          const SizedBox(height: 2),
-          Text(
-            '${l10n.phone}: $shopPhone',
-            textAlign: TextAlign.center,
-            style: ReceiptTheme.storeSubtitle(is58mm),
-          ),
-        ],
-      ],
+      ),
     );
   }
 
@@ -225,38 +277,44 @@ class ReceiptWidget extends StatelessWidget {
             Expanded(
               child: Text(
                 '${l10n.billNo}: ${sale.billNumber}',
-                style: ReceiptTheme.metaText(is58mm, isBold: true),
+                style: ReceiptTheme.metaText(is58mm, isBold: true, settings: settings),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 8),
-            Text(
-              dateStr,
-              style: ReceiptTheme.metaText(is58mm),
-            ),
+            if (settings.showReceiptDateTime) ...[
+              const SizedBox(width: 8),
+              Text(
+                dateStr,
+                style: ReceiptTheme.metaText(is58mm, settings: settings),
+              ),
+            ],
           ],
         ),
-        const SizedBox(height: 2),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            if (settings.showReceiptCashier)
-              Expanded(
-                child: Text(
-                  '${l10n.cashier}: $cashierName',
-                  style: ReceiptTheme.metaText(is58mm),
-                  overflow: TextOverflow.ellipsis,
+        if (settings.showReceiptCashier || settings.showReceiptDateTime) ...[
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              if (settings.showReceiptCashier)
+                Expanded(
+                  child: Text(
+                    '${l10n.cashier}: $cashierName',
+                    style: ReceiptTheme.metaText(is58mm, settings: settings),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )
+              else
+                const Spacer(),
+              if (settings.showReceiptDateTime) ...[
+                const SizedBox(width: 8),
+                Text(
+                  timeStr,
+                  style: ReceiptTheme.metaText(is58mm, settings: settings),
                 ),
-              )
-            else
-              const Spacer(),
-            const SizedBox(width: 8),
-            Text(
-              timeStr,
-              style: ReceiptTheme.metaText(is58mm),
-            ),
-          ],
-        ),
+              ],
+            ],
+          ),
+        ],
         if (settings.showReceiptCustomer &&
             sale.customerName?.isNotEmpty == true) ...[
           const SizedBox(height: 2),
@@ -266,7 +324,7 @@ class ReceiptWidget extends StatelessWidget {
               Expanded(
                 child: Text(
                   '${l10n.customer}: ${sale.customerName!}',
-                  style: ReceiptTheme.metaText(is58mm),
+                  style: ReceiptTheme.metaText(is58mm, settings: settings),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -274,9 +332,41 @@ class ReceiptWidget extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   sale.customerPhone!,
-                  style: ReceiptTheme.metaText(is58mm),
+                  style: ReceiptTheme.metaText(is58mm, settings: settings),
                 ),
               ],
+            ],
+          ),
+        ],
+        if (sale.customerTin?.isNotEmpty == true) ...[
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${l10n.buyerTin}:',
+                style: ReceiptTheme.metaText(is58mm, settings: settings),
+              ),
+              Text(
+                sale.customerTin!,
+                style: ReceiptTheme.metaText(is58mm, isBold: true, settings: settings),
+              ),
+            ],
+          ),
+        ],
+        if (sale.customerVatNumber?.isNotEmpty == true) ...[
+          const SizedBox(height: 2),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${l10n.buyerVatNo}:',
+                style: ReceiptTheme.metaText(is58mm, settings: settings),
+              ),
+              Text(
+                sale.customerVatNumber!,
+                style: ReceiptTheme.metaText(is58mm, isBold: true, settings: settings),
+              ),
             ],
           ),
         ],
@@ -298,7 +388,7 @@ class ReceiptWidget extends StatelessWidget {
                 flex: is58mm ? 36 : 40,
                 child: Text(
                   l10n.qtyDescHeader,
-                  style: ReceiptTheme.tableHeader(is58mm),
+                  style: ReceiptTheme.tableHeader(is58mm, settings: settings),
                 ),
               ),
               if (settings.showReceiptStandardPrice)
@@ -307,7 +397,7 @@ class ReceiptWidget extends StatelessWidget {
                   child: Text(
                     l10n.priceHeader,
                     textAlign: TextAlign.right,
-                    style: ReceiptTheme.tableHeader(is58mm),
+                    style: ReceiptTheme.tableHeader(is58mm, settings: settings),
                   ),
                 ),
               if (settings.showReceiptOurPrice)
@@ -316,7 +406,7 @@ class ReceiptWidget extends StatelessWidget {
                   child: Text(
                     l10n.ourPrice,
                     textAlign: TextAlign.right,
-                    style: ReceiptTheme.tableHeader(is58mm),
+                    style: ReceiptTheme.tableHeader(is58mm, settings: settings),
                   ),
                 ),
               Expanded(
@@ -324,7 +414,7 @@ class ReceiptWidget extends StatelessWidget {
                 child: Text(
                   l10n.totalHeader,
                   textAlign: TextAlign.right,
-                  style: ReceiptTheme.tableHeader(is58mm),
+                  style: ReceiptTheme.tableHeader(is58mm, settings: settings),
                 ),
               ),
             ],
@@ -358,17 +448,29 @@ class ReceiptWidget extends StatelessWidget {
     final ourUnitPrice = qty > 0 ? item.total / qty : item.total;
     final savings = (stdUnitPrice * qty) - item.total;
 
+    String taxTag = '';
+    if (isTaxInvoice || isVatActive) {
+      if (item.taxStatus == 'exempt') {
+        taxTag = ' [E]';
+      } else if (item.taxStatus == 'zero_rated') {
+        taxTag = ' [Z]';
+      } else if (item.taxStatus == 'taxable' || item.taxRate != null || (item.taxAmount ?? 0) > 0) {
+        taxTag = ' [T]';
+      }
+    }
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3.5),
+      padding: EdgeInsets.symmetric(vertical: settings.receiptItemSpacing / 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row 1: Product Name (Multi-line natural wrapping for Sinhala/English)
+          // Row 1: Product Name (Wrapped or Ellipsis based on user setting)
           Text(
-            item.productName,
-            style: ReceiptTheme.itemName(is58mm),
-            softWrap: true,
-            overflow: TextOverflow.visible,
+            '${item.productName}$taxTag',
+            style: ReceiptTheme.itemName(is58mm, settings: settings),
+            softWrap: settings.receiptWrapProductName,
+            maxLines: settings.receiptWrapProductName ? null : 1,
+            overflow: settings.receiptWrapProductName ? TextOverflow.visible : TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
 
@@ -381,7 +483,7 @@ class ReceiptWidget extends StatelessWidget {
                 flex: is58mm ? 36 : 40,
                 child: Text(
                   fullQty,
-                  style: ReceiptTheme.itemDetail(is58mm, isBold: true),
+                  style: ReceiptTheme.itemDetail(is58mm, isBold: true, settings: settings),
                 ),
               ),
               // Standard Price
@@ -391,7 +493,7 @@ class ReceiptWidget extends StatelessWidget {
                   child: Text(
                     stdUnitPrice.toStringAsFixed(2),
                     textAlign: TextAlign.right,
-                    style: ReceiptTheme.itemDetail(is58mm),
+                    style: ReceiptTheme.itemDetail(is58mm, settings: settings),
                   ),
                 ),
               // Our Price
@@ -401,7 +503,7 @@ class ReceiptWidget extends StatelessWidget {
                   child: Text(
                     ourUnitPrice.toStringAsFixed(2),
                     textAlign: TextAlign.right,
-                    style: ReceiptTheme.itemDetail(is58mm, isBold: true),
+                    style: ReceiptTheme.itemDetail(is58mm, isBold: true, settings: settings),
                   ),
                 ),
               // Line Total
@@ -410,7 +512,7 @@ class ReceiptWidget extends StatelessWidget {
                 child: Text(
                   item.total.toStringAsFixed(2),
                   textAlign: TextAlign.right,
-                  style: ReceiptTheme.itemDetail(is58mm, isBold: true),
+                  style: ReceiptTheme.itemDetail(is58mm, isBold: true, settings: settings),
                 ),
               ),
             ],
@@ -421,7 +523,7 @@ class ReceiptWidget extends StatelessWidget {
             const SizedBox(height: 1.5),
             Text(
               '(${l10n.profit}: -${(savings > item.discount ? savings : item.discount).toStringAsFixed(2)})',
-              style: ReceiptTheme.itemDiscount(is58mm),
+              style: ReceiptTheme.itemDiscount(is58mm, settings: settings),
             ),
           ],
         ],
@@ -443,7 +545,7 @@ class ReceiptWidget extends StatelessWidget {
                 flex: is58mm ? 40 : 44,
                 child: Text(
                   l10n.itemHeader,
-                  style: ReceiptTheme.tableHeader(is58mm),
+                  style: ReceiptTheme.tableHeader(is58mm, settings: settings),
                 ),
               ),
               Expanded(
@@ -451,7 +553,7 @@ class ReceiptWidget extends StatelessWidget {
                 child: Text(
                   l10n.qtyHeader,
                   textAlign: TextAlign.center,
-                  style: ReceiptTheme.tableHeader(is58mm),
+                  style: ReceiptTheme.tableHeader(is58mm, settings: settings),
                 ),
               ),
               Expanded(
@@ -459,7 +561,7 @@ class ReceiptWidget extends StatelessWidget {
                 child: Text(
                   l10n.priceHeader,
                   textAlign: TextAlign.right,
-                  style: ReceiptTheme.tableHeader(is58mm),
+                  style: ReceiptTheme.tableHeader(is58mm, settings: settings),
                 ),
               ),
               Expanded(
@@ -467,7 +569,7 @@ class ReceiptWidget extends StatelessWidget {
                 child: Text(
                   l10n.totalHeader,
                   textAlign: TextAlign.right,
-                  style: ReceiptTheme.tableHeader(is58mm),
+                  style: ReceiptTheme.tableHeader(is58mm, settings: settings),
                 ),
               ),
             ],
@@ -489,17 +591,29 @@ class ReceiptWidget extends StatelessWidget {
     final unitPriceStr = item.unitPrice.toStringAsFixed(2);
     final totalStr = item.total.toStringAsFixed(2);
 
+    String taxTag = '';
+    if (isTaxInvoice || isVatActive) {
+      if (item.taxStatus == 'exempt') {
+        taxTag = ' [E]';
+      } else if (item.taxStatus == 'zero_rated') {
+        taxTag = ' [Z]';
+      } else if (item.taxStatus == 'taxable' || item.taxRate != null || (item.taxAmount ?? 0) > 0) {
+        taxTag = ' [T]';
+      }
+    }
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3.0),
+      padding: EdgeInsets.symmetric(vertical: settings.receiptItemSpacing / 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Item name full width (wrap naturally)
+          // Item name full width (wrap naturally or ellipsis)
           Text(
-            item.productName,
-            style: ReceiptTheme.itemName(is58mm),
-            softWrap: true,
-            overflow: TextOverflow.visible,
+            '${item.productName}$taxTag',
+            style: ReceiptTheme.itemName(is58mm, settings: settings),
+            softWrap: settings.receiptWrapProductName,
+            maxLines: settings.receiptWrapProductName ? null : 1,
+            overflow: settings.receiptWrapProductName ? TextOverflow.visible : TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
           Row(
@@ -513,7 +627,7 @@ class ReceiptWidget extends StatelessWidget {
                 child: Text(
                   qtyStr,
                   textAlign: TextAlign.center,
-                  style: ReceiptTheme.itemDetail(is58mm),
+                  style: ReceiptTheme.itemDetail(is58mm, settings: settings),
                 ),
               ),
               Expanded(
@@ -521,7 +635,7 @@ class ReceiptWidget extends StatelessWidget {
                 child: Text(
                   unitPriceStr,
                   textAlign: TextAlign.right,
-                  style: ReceiptTheme.itemDetail(is58mm),
+                  style: ReceiptTheme.itemDetail(is58mm, settings: settings),
                 ),
               ),
               Expanded(
@@ -529,7 +643,7 @@ class ReceiptWidget extends StatelessWidget {
                 child: Text(
                   totalStr,
                   textAlign: TextAlign.right,
-                  style: ReceiptTheme.itemDetail(is58mm, isBold: true),
+                  style: ReceiptTheme.itemDetail(is58mm, isBold: true, settings: settings),
                 ),
               ),
             ],
@@ -538,7 +652,7 @@ class ReceiptWidget extends StatelessWidget {
             const SizedBox(height: 1),
             Text(
               '   (${l10n.discount}: -${item.discount.toStringAsFixed(2)})',
-              style: ReceiptTheme.itemDiscount(is58mm),
+              style: ReceiptTheme.itemDiscount(is58mm, settings: settings),
             ),
           ],
         ],
@@ -581,9 +695,9 @@ class ReceiptWidget extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('${l10n.itemsCount}: ${items.length}',
-                style: ReceiptTheme.summaryLabel(is58mm)),
+                style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
             Text('Pcs: $pcsStr',
-                style: ReceiptTheme.summaryValue(is58mm, isBold: true)),
+                style: ReceiptTheme.summaryValue(is58mm, isBold: true, settings: settings)),
           ],
         ),
         const SizedBox(height: 3),
@@ -592,9 +706,9 @@ class ReceiptWidget extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(l10n.subtotal, style: ReceiptTheme.summaryLabel(is58mm)),
+            Text(l10n.subtotal, style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
             Text(displaySubtotal.toStringAsFixed(2),
-                style: ReceiptTheme.summaryValue(is58mm)),
+                style: ReceiptTheme.summaryValue(is58mm, settings: settings)),
           ],
         ),
 
@@ -606,27 +720,65 @@ class ReceiptWidget extends StatelessWidget {
             children: [
               Text(
                 l10n.totalProfit,
-                style: ReceiptTheme.savingsLabel(is58mm),
+                style: ReceiptTheme.savingsLabel(is58mm, settings: settings),
               ),
               Text(
                 '-${totalDiscount.toStringAsFixed(2)}',
-                style: ReceiptTheme.savingsValue(is58mm),
+                style: ReceiptTheme.savingsValue(is58mm, settings: settings),
               ),
             ],
           ),
         ],
 
-        // Tax / VAT
-        if (settings.showReceiptTax && sale.tax > 0.05) ...[
-          const SizedBox(height: 3),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(l10n.tax, style: ReceiptTheme.summaryLabel(is58mm)),
-              Text(sale.tax.toStringAsFixed(2),
-                  style: ReceiptTheme.summaryValue(is58mm)),
-            ],
-          ),
+        // Tax / VAT Breakdown
+        if (isVatActive || isTaxInvoice || (settings.showReceiptTax && sale.tax > 0.01)) ...[
+          if (sale.taxableAmount != null && sale.taxableAmount! > 0) ...[
+            const SizedBox(height: 3),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(l10n.taxableBase, style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
+                Text(sale.taxableAmount!.toStringAsFixed(2),
+                    style: ReceiptTheme.summaryValue(is58mm, settings: settings)),
+              ],
+            ),
+          ],
+          if (sale.taxExemptAmount != null && sale.taxExemptAmount! > 0) ...[
+            const SizedBox(height: 3),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(l10n.exemptAmount, style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
+                Text(sale.taxExemptAmount!.toStringAsFixed(2),
+                    style: ReceiptTheme.summaryValue(is58mm, settings: settings)),
+              ],
+            ),
+          ],
+          if (sale.taxZeroRatedAmount != null && sale.taxZeroRatedAmount! > 0) ...[
+            const SizedBox(height: 3),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(l10n.zeroRatedAmount, style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
+                Text(sale.taxZeroRatedAmount!.toStringAsFixed(2),
+                    style: ReceiptTheme.summaryValue(is58mm, settings: settings)),
+              ],
+            ),
+          ],
+          if (sale.tax > 0.005) ...[
+            const SizedBox(height: 3),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${l10n.tax} (${(sale.vatRate ?? settings.defaultVatRate).toStringAsFixed(0)}%${sale.pricingType == 'inclusive' ? ' incl.' : ''})',
+                  style: ReceiptTheme.summaryLabel(is58mm, settings: settings),
+                ),
+                Text(sale.tax.toStringAsFixed(2),
+                    style: ReceiptTheme.summaryValue(is58mm, isBold: true, settings: settings)),
+              ],
+            ),
+          ],
         ],
 
         // Service charge
@@ -635,9 +787,9 @@ class ReceiptWidget extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(l10n.serviceCharge, style: ReceiptTheme.summaryLabel(is58mm)),
+              Text(l10n.serviceCharge, style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
               Text(sale.serviceCharge.toStringAsFixed(2),
-                  style: ReceiptTheme.summaryValue(is58mm)),
+                  style: ReceiptTheme.summaryValue(is58mm, settings: settings)),
             ],
           ),
         ],
@@ -648,10 +800,10 @@ class ReceiptWidget extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(l10n.merchantProfit, style: ReceiptTheme.summaryLabel(is58mm)),
+              Text(l10n.merchantProfit, style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
               Text(
                 (items.fold(0.0, (s, i) => s + (i.total - (i.costPrice * i.quantity))) - sale.discount).toStringAsFixed(2),
-                style: ReceiptTheme.summaryValue(is58mm),
+                style: ReceiptTheme.summaryValue(is58mm, settings: settings),
               ),
             ],
           ),
@@ -674,13 +826,17 @@ class ReceiptWidget extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            l10n.grandTotal,
-            style: ReceiptTheme.grandTotalLabel(is58mm),
+          Expanded(
+            child: Text(
+              l10n.grandTotal,
+              style: ReceiptTheme.grandTotalLabel(is58mm, settings: settings),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
+          const SizedBox(width: 8),
           Text(
             'Rs. ${sale.total.toStringAsFixed(2)}',
-            style: ReceiptTheme.grandTotalValue(is58mm),
+            style: ReceiptTheme.grandTotalValue(is58mm, settings: settings),
           ),
         ],
       ),
@@ -715,8 +871,8 @@ class ReceiptWidget extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('${l10n.paymentMethod}:', style: ReceiptTheme.summaryLabel(is58mm)),
-            Text(paymentLabel, style: ReceiptTheme.summaryValue(is58mm, isBold: true)),
+            Text('${l10n.paymentMethod}:', style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
+            Text(paymentLabel, style: ReceiptTheme.summaryValue(is58mm, isBold: true, settings: settings)),
           ],
         ),
         if (sale.paymentMethod.toLowerCase() == 'cash' && effectiveCash != null) ...[
@@ -724,18 +880,18 @@ class ReceiptWidget extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${l10n.cashReceived}:', style: ReceiptTheme.summaryLabel(is58mm)),
-              Text(effectiveCash.toStringAsFixed(2), style: ReceiptTheme.summaryValue(is58mm)),
+              Text('${l10n.cashReceived}:', style: ReceiptTheme.summaryLabel(is58mm, settings: settings)),
+              Text(effectiveCash.toStringAsFixed(2), style: ReceiptTheme.summaryValue(is58mm, settings: settings)),
             ],
           ),
           const SizedBox(height: 3),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${l10n.change}:', style: ReceiptTheme.summaryLabel(is58mm, isBold: true)),
+              Text('${l10n.change}:', style: ReceiptTheme.summaryLabel(is58mm, isBold: true, settings: settings)),
               Text(
                 (effectiveChange ?? 0.0).toStringAsFixed(2),
-                style: ReceiptTheme.summaryValue(is58mm, isBold: true),
+                style: ReceiptTheme.summaryValue(is58mm, isBold: true, settings: settings),
               ),
             ],
           ),
@@ -750,34 +906,55 @@ class ReceiptWidget extends StatelessWidget {
         ? settings.receiptFooter
         : l10n.thankYou;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(
-          footerMsg,
-          textAlign: TextAlign.center,
-          style: ReceiptTheme.footerThankYou(is58mm),
-        ),
-        const SizedBox(height: 4),
+    final footerAlign = settings.receiptFooterAlignment;
+    final crossAlign = footerAlign == 'left'
+        ? CrossAxisAlignment.start
+        : (footerAlign == 'right' ? CrossAxisAlignment.end : CrossAxisAlignment.center);
+    final textAlign = footerAlign == 'left'
+        ? TextAlign.left
+        : (footerAlign == 'right' ? TextAlign.right : TextAlign.center);
 
-        // Barcode / Bill Number representation
-        if (settings.showReceiptBarcode) ...[
-          const SizedBox(height: 4),
-          ReceiptBarcodeWidget(
-            data: sale.billNumber,
-            width: is58mm ? 180.0 : 240.0,
-            height: is58mm ? 36.0 : 44.0,
+    return Padding(
+      padding: EdgeInsets.only(top: settings.receiptFooterSpacing / 2),
+      child: Column(
+        crossAxisAlignment: crossAlign,
+        children: [
+          Text(
+            footerMsg,
+            textAlign: textAlign,
+            style: ReceiptTheme.footerThankYou(is58mm, settings: settings),
           ),
-          const SizedBox(height: 2),
-        ],
+          if (isTaxInvoice) ...[
+            const SizedBox(height: 3),
+            Text(
+              '[T]=Taxable  [Z]=Zero-Rated  [E]=Exempt',
+              textAlign: textAlign,
+              style: ReceiptTheme.metaText(is58mm, settings: settings).copyWith(fontSize: (is58mm ? 9 : 10)),
+            ),
+          ],
+          const SizedBox(height: 4),
 
-        Text(
-          'Powered by QuickBill POS',
-          textAlign: TextAlign.center,
-          style: ReceiptTheme.footerCredit(is58mm),
-        ),
-        const SizedBox(height: 8),
-      ],
+          // Barcode / Bill Number representation
+          if (settings.showReceiptBarcode) ...[
+            const SizedBox(height: 4),
+            Center(
+              child: ReceiptBarcodeWidget(
+                data: sale.billNumber,
+                width: is58mm ? 180.0 : 240.0,
+                height: is58mm ? 36.0 : 44.0,
+              ),
+            ),
+            const SizedBox(height: 2),
+          ],
+
+          Text(
+            'Powered by QuickBill POS',
+            textAlign: textAlign,
+            style: ReceiptTheme.footerCredit(is58mm, settings: settings),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }

@@ -30,10 +30,13 @@ import '../models/branch.dart';
 import '../models/discount.dart';
 import '../models/service.dart';
 import '../models/price_history.dart';
+import '../models/stock_expiry_item.dart';
+import '../utils/tax_calculator.dart';
 import 'sinhala_search_service.dart';
 
 class DatabaseService {
   static Database? _database;
+  static const int _databaseVersion = 32;
   static final DatabaseService instance = DatabaseService._init();
   static final Map<String, List<String>> _tableColumnsCache = {};
 
@@ -314,7 +317,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 29,  // Bumped to 29 for Sinhala/Singlish search fields (name_sinhala, name_english, search_aliases, normalized_terms)
+      version: 32,  // Bumped to 32 to reset default tax_status to exempt (opt-in VAT)
       onConfigure: (db) async {
         try {
           await db.rawQuery('PRAGMA journal_mode=WAL;');
@@ -490,6 +493,9 @@ class DatabaseService {
         type TEXT DEFAULT 'product',
         image_url TEXT,
         track_batches INTEGER DEFAULT 0,
+        expiry_date TEXT,
+        tax_status TEXT DEFAULT 'exempt',
+        custom_tax_rate REAL,
         supplier_id INTEGER REFERENCES suppliers(id),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -549,6 +555,15 @@ class DatabaseService {
         discount REAL DEFAULT 0,
         tax REAL DEFAULT 0,
         service_charge REAL DEFAULT 0.0,
+        taxable_amount REAL DEFAULT 0.0,
+        tax_exempt_amount REAL DEFAULT 0.0,
+        tax_zero_rated_amount REAL DEFAULT 0.0,
+        is_vat_enabled INTEGER DEFAULT 0,
+        vat_rate REAL DEFAULT 0.0,
+        pricing_type TEXT DEFAULT 'inclusive',
+        invoice_type TEXT DEFAULT 'normal',
+        customer_tin TEXT,
+        customer_vat_number TEXT,
         items_count INTEGER,
         payment_method TEXT DEFAULT 'cash',
         customer_id INTEGER,
@@ -583,6 +598,10 @@ class DatabaseService {
         total REAL NOT NULL,
         cost_price REAL NOT NULL DEFAULT 0.0,
         discount REAL DEFAULT 0.0,
+        tax_status TEXT DEFAULT 'exempt',
+        tax_rate REAL DEFAULT 0.0,
+        tax_amount REAL DEFAULT 0.0,
+        taxable_amount REAL DEFAULT 0.0,
         FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
         FOREIGN KEY (product_id) REFERENCES products(id),
         FOREIGN KEY (batch_id) REFERENCES product_batches(id)
@@ -773,6 +792,7 @@ class DatabaseService {
     await db.execute('CREATE INDEX idx_products_name ON products(name COLLATE NOCASE)');
     await db.execute('CREATE INDEX idx_products_category ON products(category)');
     await db.execute('CREATE INDEX idx_products_track_batches ON products(track_batches)');
+    await db.execute('CREATE INDEX idx_products_expiry ON products(expiry_date)');
     await db.execute('CREATE INDEX idx_products_synced ON products(synced)');
     await db.execute('CREATE INDEX idx_product_batches_product_id ON product_batches(product_id)');
     await db.execute('CREATE INDEX idx_product_batches_barcode ON product_batches(barcode)');
@@ -1004,6 +1024,113 @@ class DatabaseService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 32) {
+      debugPrint('🚀 Migrating to Database v32: Resetting products tax_status to exempt for opt-in VAT');
+      try {
+        await db.execute("UPDATE products SET tax_status = 'exempt' WHERE tax_status = 'taxable' OR tax_status IS NULL");
+      } catch (e) {
+        debugPrint('⚠️ products update tax_status error: $e');
+      }
+    }
+
+    if (oldVersion < 31) {
+      debugPrint('🚀 Migrating to Database v31: Adding Sri Lanka VAT and Tax fields');
+      // Products table
+      try {
+        await db.execute("ALTER TABLE products ADD COLUMN tax_status TEXT DEFAULT 'exempt'");
+      } catch (e) {
+        debugPrint('⚠️ products.tax_status may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE products ADD COLUMN custom_tax_rate REAL");
+      } catch (e) {
+        debugPrint('⚠️ products.custom_tax_rate may already exist: $e');
+      }
+
+      // Sales table
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN taxable_amount REAL DEFAULT 0.0");
+      } catch (e) {
+        debugPrint('⚠️ sales.taxable_amount may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN tax_exempt_amount REAL DEFAULT 0.0");
+      } catch (e) {
+        debugPrint('⚠️ sales.tax_exempt_amount may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN tax_zero_rated_amount REAL DEFAULT 0.0");
+      } catch (e) {
+        debugPrint('⚠️ sales.tax_zero_rated_amount may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN is_vat_enabled INTEGER DEFAULT 0");
+      } catch (e) {
+        debugPrint('⚠️ sales.is_vat_enabled may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN vat_rate REAL DEFAULT 0.0");
+      } catch (e) {
+        debugPrint('⚠️ sales.vat_rate may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN pricing_type TEXT DEFAULT 'inclusive'");
+      } catch (e) {
+        debugPrint('⚠️ sales.pricing_type may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN invoice_type TEXT DEFAULT 'normal'");
+      } catch (e) {
+        debugPrint('⚠️ sales.invoice_type may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN customer_tin TEXT");
+      } catch (e) {
+        debugPrint('⚠️ sales.customer_tin may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sales ADD COLUMN customer_vat_number TEXT");
+      } catch (e) {
+        debugPrint('⚠️ sales.customer_vat_number may already exist: $e');
+      }
+
+      // Sale Items table
+      try {
+        await db.execute("ALTER TABLE sale_items ADD COLUMN tax_status TEXT DEFAULT 'exempt'");
+      } catch (e) {
+        debugPrint('⚠️ sale_items.tax_status may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sale_items ADD COLUMN tax_rate REAL DEFAULT 0.0");
+      } catch (e) {
+        debugPrint('⚠️ sale_items.tax_rate may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sale_items ADD COLUMN tax_amount REAL DEFAULT 0.0");
+      } catch (e) {
+        debugPrint('⚠️ sale_items.tax_amount may already exist: $e');
+      }
+      try {
+        await db.execute("ALTER TABLE sale_items ADD COLUMN taxable_amount REAL DEFAULT 0.0");
+      } catch (e) {
+        debugPrint('⚠️ sale_items.taxable_amount may already exist: $e');
+      }
+    }
+
+    if (oldVersion < 30) {
+      debugPrint('🚀 Migrating to Database v30: Adding expiry_date to products table');
+      try {
+        await db.execute('ALTER TABLE products ADD COLUMN expiry_date TEXT');
+      } catch (e) {
+        debugPrint('⚠️ products.expiry_date may already exist: $e');
+      }
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_products_expiry ON products(expiry_date)');
+      } catch (e) {
+        debugPrint('⚠️ idx_products_expiry may already exist: $e');
+      }
+    }
+
     if (oldVersion < 29) {
       debugPrint('🚀 Migrating to Database v29: Adding Sinhala, English, and Search Aliases columns to products table');
       try {
@@ -2249,9 +2376,33 @@ class DatabaseService {
         ''', [sale.total, DateTime.now().toIso8601String(), sale.customerId]);
         await _addToSyncQueue('customers', sale.customerId!, 'UPDATE', executor: txn);
       }
-      
+      // Precompute line tax breakdown for accurate historical record
+      final taxInputs = cartItems.map((item) => TaxInputItem(
+        productId: item.product?.id,
+        name: item.itemName,
+        quantity: item.quantity,
+        unitPrice: item.itemPrice,
+        itemDiscount: item.discount,
+        taxStatus: item.taxStatus,
+        customTaxRate: item.customTaxRate,
+      )).toList();
+
+      final taxBreakdown = TaxCalculator.calculate(
+        items: taxInputs,
+        isVatEnabled: sale.isVatEnabled,
+        defaultVatRate: sale.vatRate,
+        pricingType: sale.pricingType,
+        billDiscount: sale.discount,
+      );
+
       // Insert sale items
-      for (var cartItem in cartItems) {
+      for (int i = 0; i < cartItems.length; i++) {
+        final cartItem = cartItems[i];
+        final itemTax = (i < taxBreakdown.items.length) ? taxBreakdown.items[i] : null;
+        final lineTaxStatus = itemTax?.taxStatus ?? cartItem.taxStatus;
+        final lineTaxRate = itemTax?.taxRate ?? 0.0;
+        final lineTaxAmount = itemTax?.taxAmount ?? 0.0;
+        final lineTaxableAmount = itemTax?.taxableAmount ?? 0.0;
         
         // Skip inventory logic for quick items and services
         if (cartItem.isQuickItem || cartItem.itemType == 'service') {
@@ -2275,6 +2426,10 @@ class DatabaseService {
             total: cartItem.total,
             costPrice: 0.0, // No cost price for quick items/services
             discount: cartItem.discount,
+            taxStatus: lineTaxStatus,
+            taxRate: lineTaxRate,
+            taxAmount: lineTaxAmount,
+            taxableAmount: lineTaxableAmount,
           );
           await _insertWithId(txn, 'sale_items', saleItem.toMap());
           continue; // Skip inventory updates
@@ -2311,6 +2466,10 @@ class DatabaseService {
             total: cartItem.total,
             costPrice: cartItem.product?.costPrice ?? 0.0,
             discount: cartItem.discount,
+            taxStatus: lineTaxStatus,
+            taxRate: lineTaxRate,
+            taxAmount: lineTaxAmount,
+            taxableAmount: lineTaxableAmount,
           );
           await _insertWithId(txn, 'sale_items', saleItem.toMap());
           continue;
@@ -2330,6 +2489,10 @@ class DatabaseService {
             total: cartItem.total,
             costPrice: fallbackCost,
             discount: cartItem.discount,
+            taxStatus: lineTaxStatus,
+            taxRate: lineTaxRate,
+            taxAmount: lineTaxAmount,
+            taxableAmount: lineTaxableAmount,
           );
           await _insertWithId(txn, 'sale_items', saleItem.toMap());
           continue; // Skip stock updates completely for services
@@ -2345,6 +2508,10 @@ class DatabaseService {
             total: cartItem.total,
             costPrice: fallbackCost,
             discount: cartItem.discount,
+            taxStatus: lineTaxStatus,
+            taxRate: lineTaxRate,
+            taxAmount: lineTaxAmount,
+            taxableAmount: lineTaxableAmount,
           );
           await _insertWithId(txn, 'sale_items', saleItem.toMap());
           
@@ -2364,10 +2531,12 @@ class DatabaseService {
             final compTrackBatches = (compParams.first['track_batches'] as int) == 1;
             
             if (compTrackBatches) {
+              final nowComp = DateTime.now();
+              final todayMidnightComp = DateTime(nowComp.year, nowComp.month, nowComp.day).toIso8601String();
               final batches = await txn.query(
                 'product_batches',
-                where: 'product_id = ? AND deleted = ? AND stock > ?',
-                whereArgs: [compId, 0, 0],
+                where: 'product_id = ? AND deleted = ? AND stock > ? AND (expiry_date IS NULL OR expiry_date >= ?)',
+                whereArgs: [compId, 0, 0, todayMidnightComp],
                 orderBy: 'expiry_date ASC',
               );
               
@@ -2443,6 +2612,10 @@ class DatabaseService {
               batchId: cartItem.batchId,
               batchNumber: cartItem.batchNumber,
               discount: cartItem.discount,
+              taxStatus: lineTaxStatus,
+              taxRate: lineTaxRate,
+              taxAmount: lineTaxAmount,
+              taxableAmount: lineTaxableAmount,
             );
             await _insertWithId(txn, 'sale_items', saleItem.toMap());
             
@@ -2469,11 +2642,13 @@ class DatabaseService {
 
           } else {
             // Case 2: No batch selected, use FEFO (First Expire First Out)
-            // Get available batches sorted by expiry
+            // Get available non-expired batches sorted by expiry
+            final nowDirect = DateTime.now();
+            final todayMidnightDirect = DateTime(nowDirect.year, nowDirect.month, nowDirect.day).toIso8601String();
             final batches = await txn.query(
               'product_batches',
-              where: 'product_id = ? AND deleted = ? AND stock > ?',
-              whereArgs: [cartItem.product!.id, 0, 0],
+              where: 'product_id = ? AND deleted = ? AND stock > ? AND (expiry_date IS NULL OR expiry_date >= ?)',
+              whereArgs: [cartItem.product!.id, 0, 0, todayMidnightDirect],
               orderBy: 'expiry_date ASC',
             );
             
@@ -2490,6 +2665,10 @@ class DatabaseService {
               
               final takeFromBatch = remainingToSell > batchStock ? batchStock : remainingToSell;
               
+              final fraction = cartItem.quantity > 0 ? (takeFromBatch / cartItem.quantity) : 1.0;
+              final splitTaxAmount = TaxCalculator.round2(lineTaxAmount * fraction);
+              final splitTaxableAmount = TaxCalculator.round2(lineTaxableAmount * fraction);
+
               // Create split sale item
               final saleItem = SaleItem(
                 saleId: saleId,
@@ -2497,11 +2676,15 @@ class DatabaseService {
                 productName: cartItem.product!.name, // Could append batch info if needed
                 quantity: takeFromBatch,
                 unitPrice: cartItem.product!.price,
-                total: (cartItem.product!.price * takeFromBatch) - ((takeFromBatch / cartItem.quantity) * cartItem.discount),
+                total: (cartItem.product!.price * takeFromBatch) - (fraction * cartItem.discount),
                 costPrice: batchCost,
                 batchId: batchId,
                 batchNumber: batchNumber,
-                discount: (takeFromBatch / cartItem.quantity) * cartItem.discount,
+                discount: fraction * cartItem.discount,
+                taxStatus: lineTaxStatus,
+                taxRate: lineTaxRate,
+                taxAmount: splitTaxAmount,
+                taxableAmount: splitTaxableAmount,
               );
               await _insertWithId(txn, 'sale_items', saleItem.toMap());
               
@@ -2534,15 +2717,23 @@ class DatabaseService {
             // Or strict enforcement. For now, let's treat remainder as general stock (no batch)
             // to avoid blocking sale.
               if (remainingToSell > 0) {
+                final fraction = cartItem.quantity > 0 ? (remainingToSell / cartItem.quantity) : 1.0;
+                final splitTaxAmount = TaxCalculator.round2(lineTaxAmount * fraction);
+                final splitTaxableAmount = TaxCalculator.round2(lineTaxableAmount * fraction);
+
                 final saleItem = SaleItem(
                   saleId: saleId,
                   productId: cartItem.product!.id!,
                   productName: cartItem.product!.name,
                   quantity: remainingToSell,
                   unitPrice: cartItem.product!.price,
-                  total: (cartItem.product!.price * remainingToSell) - ((remainingToSell / cartItem.quantity) * cartItem.discount),
+                  total: (cartItem.product!.price * remainingToSell) - (fraction * cartItem.discount),
                   costPrice: fallbackCost,
-                  discount: (remainingToSell / cartItem.quantity) * cartItem.discount,
+                  discount: fraction * cartItem.discount,
+                  taxStatus: lineTaxStatus,
+                  taxRate: lineTaxRate,
+                  taxAmount: splitTaxAmount,
+                  taxableAmount: splitTaxableAmount,
                 );
               await _insertWithId(txn, 'sale_items', saleItem.toMap());
             }
@@ -2563,6 +2754,10 @@ class DatabaseService {
             soldQuantity: cartItem.quantity,
             sellingMode: cartItem.sellingMode,
             packSize: cartItem.packSize,
+            taxStatus: lineTaxStatus,
+            taxRate: lineTaxRate,
+            taxAmount: lineTaxAmount,
+            taxableAmount: lineTaxableAmount,
           );
           await _insertWithId(txn, 'sale_items', saleItem.toMap());
         }
@@ -2687,6 +2882,117 @@ class DatabaseService {
       orderBy: 'created_at DESC',
     );
     return await _attachItemsToSales(maps);
+  }
+
+  /// Retrieves comprehensive Sri Lanka VAT reporting data aggregated from completed sales.
+  Future<Map<String, dynamic>> getVatReport({
+    DateTime? startDate,
+    DateTime? endDate,
+    int branchId = 1,
+  }) async {
+    final db = await database;
+    final List<dynamic> whereArgs = [];
+    final List<String> whereClauses = ['deleted = 0'];
+
+    if (branchId > 0) {
+      whereClauses.add('branch_id = ?');
+      whereArgs.add(branchId);
+    }
+    if (startDate != null) {
+      whereClauses.add('created_at >= ?');
+      whereArgs.add(startDate.toIso8601String());
+    }
+    if (endDate != null) {
+      whereClauses.add('created_at <= ?');
+      whereArgs.add(endDate.toIso8601String());
+    }
+
+    final whereString = whereClauses.join(' AND ');
+
+    // 1. Overall Aggregates from sales table
+    final salesSummary = await db.rawQuery('''
+      SELECT 
+        COUNT(*) as total_invoices,
+        COALESCE(SUM(total), 0) as total_gross_sales,
+        COALESCE(SUM(discount), 0) as total_discount,
+        COALESCE(SUM(tax), 0) as total_vat_collected,
+        COALESCE(SUM(taxable_amount), 0) as total_taxable_sales,
+        COALESCE(SUM(tax_exempt_amount), 0) as total_exempt_sales,
+        COALESCE(SUM(tax_zero_rated_amount), 0) as total_zero_rated_sales
+      FROM sales
+      WHERE $whereString
+    ''', whereArgs);
+
+    // 2. Sales by VAT Rate (from sale_items joined with sales)
+    final itemsWhereArgs = List.from(whereArgs);
+    final itemsWhereString = whereClauses.map((c) => 's.$c').join(' AND ');
+    final salesByRate = await db.rawQuery('''
+      SELECT 
+        si.tax_rate,
+        si.tax_status,
+        COUNT(si.id) as item_count,
+        COALESCE(SUM(si.quantity), 0) as total_quantity,
+        COALESCE(SUM(si.taxable_amount), 0) as taxable_amount,
+        COALESCE(SUM(si.tax_amount), 0) as vat_amount,
+        COALESCE(SUM(si.total), 0) as total_amount
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      WHERE $itemsWhereString
+      GROUP BY si.tax_status, si.tax_rate
+      ORDER BY si.tax_rate DESC
+    ''', itemsWhereArgs);
+
+    // 3. Daily Summary
+    final dailySummary = await db.rawQuery('''
+      SELECT 
+        strftime('%Y-%m-%d', created_at) as sale_date,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(taxable_amount), 0) as taxable_sales,
+        COALESCE(SUM(tax_exempt_amount), 0) as exempt_sales,
+        COALESCE(SUM(tax_zero_rated_amount), 0) as zero_rated_sales,
+        COALESCE(SUM(tax), 0) as vat_collected,
+        COALESCE(SUM(total), 0) as total_sales
+      FROM sales
+      WHERE $whereString
+      GROUP BY strftime('%Y-%m-%d', created_at)
+      ORDER BY sale_date DESC
+    ''', whereArgs);
+
+    // 4. Monthly Summary
+    final monthlySummary = await db.rawQuery('''
+      SELECT 
+        strftime('%Y-%m', created_at) as sale_month,
+        COUNT(*) as invoice_count,
+        COALESCE(SUM(taxable_amount), 0) as taxable_sales,
+        COALESCE(SUM(tax_exempt_amount), 0) as exempt_sales,
+        COALESCE(SUM(tax_zero_rated_amount), 0) as zero_rated_sales,
+        COALESCE(SUM(tax), 0) as vat_collected,
+        COALESCE(SUM(total), 0) as total_sales
+      FROM sales
+      WHERE $whereString
+      GROUP BY strftime('%Y-%m', created_at)
+      ORDER BY sale_month DESC
+    ''', whereArgs);
+
+    // 5. Invoices with Tax Information
+    final invoices = await db.rawQuery('''
+      SELECT 
+        id, bill_number, created_at, customer_name, customer_phone, customer_tin, customer_vat_number,
+        invoice_type, pricing_type, vat_rate, is_vat_enabled,
+        taxable_amount, tax_exempt_amount, tax_zero_rated_amount, tax, discount, total
+      FROM sales
+      WHERE $whereString
+      ORDER BY created_at DESC
+      LIMIT 100
+    ''', whereArgs);
+
+    return {
+      'summary': salesSummary.isNotEmpty ? salesSummary.first : {},
+      'sales_by_rate': salesByRate,
+      'daily_summary': dailySummary,
+      'monthly_summary': monthlySummary,
+      'invoices': invoices,
+    };
   }
 
   Future<Map<String, dynamic>> getTodayStats(int branchId) async {
@@ -3515,32 +3821,126 @@ class DatabaseService {
     });
   }
 
-  /// Get expiring batches (within specified days)
-  Future<List<Map<String, dynamic>>> getExpiringBatches(int daysThreshold, int branchId) async {
+  /// Get all inventory items with expiry tracking (from both product_batches and direct products)
+  Future<List<StockExpiryItem>> getAllStockExpiryItems({int branchId = 1}) async {
     final db = await database;
-    final String thresholdDate = DateTime.now().add(Duration(days: daysThreshold)).toIso8601String();
     
-    return await db.rawQuery('''
-      SELECT b.*, p.name as product_name 
+    // 1. Query all batch-tracked items with expiry date and stock > 0
+    final List<Map<String, dynamic>> batchMaps = await db.rawQuery('''
+      SELECT 
+        b.id AS batch_id,
+        b.product_id,
+        b.batch_number,
+        b.barcode AS batch_barcode,
+        b.stock AS batch_stock,
+        b.expiry_date AS batch_expiry_date,
+        b.purchase_date AS batch_purchase_date,
+        b.purchase_price AS batch_purchase_price,
+        p.name AS product_name,
+        p.name_sinhala,
+        p.name_english,
+        p.base_barcode,
+        p.category,
+        p.unit,
+        p.price,
+        p.cost_price,
+        p.track_batches
       FROM product_batches b
       JOIN products p ON b.product_id = p.id
-      WHERE (b.branch_id = ? OR ? = 0) AND b.deleted = 0 AND b.expiry_date <= ? AND b.stock > 0
+      WHERE (b.branch_id = ? OR ? = 0) 
+        AND b.deleted = 0 
+        AND b.stock > 0 
+        AND b.expiry_date IS NOT NULL 
+        AND TRIM(b.expiry_date) != ''
+        AND p.deleted = 0
       ORDER BY b.expiry_date ASC
-    ''', [branchId, branchId, thresholdDate]);
+    ''', [branchId, branchId]);
+
+    // 2. Query simple products with direct expiry date and stock > 0 (track_batches = 0)
+    final List<Map<String, dynamic>> productMaps = await db.rawQuery('''
+      SELECT 
+        NULL AS batch_id,
+        p.id AS product_id,
+        NULL AS batch_number,
+        p.base_barcode AS batch_barcode,
+        p.stock AS batch_stock,
+        p.expiry_date AS batch_expiry_date,
+        NULL AS batch_purchase_date,
+        p.cost_price AS batch_purchase_price,
+        p.name AS product_name,
+        p.name_sinhala,
+        p.name_english,
+        p.base_barcode,
+        p.category,
+        p.unit,
+        p.price,
+        p.cost_price,
+        p.track_batches
+      FROM products p
+      WHERE (p.branch_id = ? OR ? = 0)
+        AND p.deleted = 0
+        AND p.track_batches = 0
+        AND p.stock > 0
+        AND p.expiry_date IS NOT NULL
+        AND TRIM(p.expiry_date) != ''
+      ORDER BY p.expiry_date ASC
+    ''', [branchId, branchId]);
+
+    final List<StockExpiryItem> items = [];
+    for (final m in batchMaps) {
+      try {
+        items.add(StockExpiryItem.fromMap(m));
+      } catch (e) {
+        debugPrint('Error parsing batch expiry item: $e');
+      }
+    }
+    for (final m in productMaps) {
+      try {
+        items.add(StockExpiryItem.fromMap(m));
+      } catch (e) {
+        debugPrint('Error parsing product expiry item: $e');
+      }
+    }
+
+    return items;
+  }
+
+  /// Get expiring batches (within specified days, excluding already expired)
+  Future<List<Map<String, dynamic>>> getExpiringBatches(int daysThreshold, int branchId) async {
+    final db = await database;
+    final now = DateTime.now();
+    final todayStr = DateTime(now.year, now.month, now.day).toIso8601String();
+    final String thresholdDate = now.add(Duration(days: daysThreshold)).toIso8601String();
+    
+    return await db.rawQuery('''
+      SELECT b.*, b.id AS batch_id, p.name as product_name, p.name_sinhala, p.category, p.unit
+      FROM product_batches b
+      JOIN products p ON b.product_id = p.id
+      WHERE (b.branch_id = ? OR ? = 0) 
+        AND b.deleted = 0 
+        AND b.stock > 0 
+        AND b.expiry_date >= ? 
+        AND b.expiry_date <= ? 
+      ORDER BY b.expiry_date ASC
+    ''', [branchId, branchId, todayStr, thresholdDate]);
   }
 
   /// Get expired batches
   Future<List<Map<String, dynamic>>> getExpiredBatches(int branchId) async {
     final db = await database;
-    final String now = DateTime.now().toIso8601String();
+    final now = DateTime.now();
+    final todayStr = DateTime(now.year, now.month, now.day).toIso8601String();
     
     return await db.rawQuery('''
-      SELECT b.*, p.name as product_name 
+      SELECT b.*, b.id AS batch_id, p.name as product_name, p.name_sinhala, p.category, p.unit
       FROM product_batches b
       JOIN products p ON b.product_id = p.id
-      WHERE b.branch_id = ? AND b.deleted = 0 AND b.expiry_date < ? AND b.stock > 0
+      WHERE (b.branch_id = ? OR ? = 0) 
+        AND b.deleted = 0 
+        AND b.stock > 0 
+        AND b.expiry_date < ? 
       ORDER BY b.expiry_date ASC
-    ''', [branchId, now]);
+    ''', [branchId, branchId, todayStr]);
   }
 
   /// Get product with all batches
@@ -4702,6 +5102,8 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
         'pack_size': 'REAL DEFAULT 1.0',
         'pack_unit': "TEXT DEFAULT 'pack'",
         'pack_size_unit': "TEXT DEFAULT 'kg'",
+        'tax_status': "TEXT DEFAULT 'exempt'",
+        'custom_tax_rate': 'REAL',
       },
       'employees': {
         'staff_id': 'TEXT',
@@ -4723,6 +5125,15 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
         'custom_order_id': 'INTEGER',
         'server_timestamp': 'TEXT',
         'branch_id': 'INTEGER NOT NULL DEFAULT 1',
+        'taxable_amount': 'REAL DEFAULT 0.0',
+        'tax_exempt_amount': 'REAL DEFAULT 0.0',
+        'tax_zero_rated_amount': 'REAL DEFAULT 0.0',
+        'is_vat_enabled': 'INTEGER DEFAULT 0',
+        'vat_rate': 'REAL DEFAULT 0.0',
+        'pricing_type': "TEXT DEFAULT 'inclusive'",
+        'invoice_type': "TEXT DEFAULT 'normal'",
+        'customer_tin': 'TEXT',
+        'customer_vat_number': 'TEXT',
       },
       'sale_items': {
         'item_type': "TEXT DEFAULT 'product'",
@@ -4733,6 +5144,10 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
         'sold_quantity': 'REAL',
         'selling_mode': "TEXT DEFAULT 'standard'",
         'pack_size': 'REAL',
+        'tax_status': "TEXT DEFAULT 'exempt'",
+        'tax_rate': 'REAL DEFAULT 0.0',
+        'tax_amount': 'REAL DEFAULT 0.0',
+        'taxable_amount': 'REAL DEFAULT 0.0',
       },
       'price_history': {
         'product_id': 'INTEGER NOT NULL',

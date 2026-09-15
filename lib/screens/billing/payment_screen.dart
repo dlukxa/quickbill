@@ -599,6 +599,7 @@ class _SuccessDialogState extends ConsumerState<_SuccessDialog> {
         batchId: c.batchId, 
         batchNumber: c.batchNumber, 
         discount: c.discount,
+        taxStatus: c.taxStatus,
       )).toList();
 
   @override

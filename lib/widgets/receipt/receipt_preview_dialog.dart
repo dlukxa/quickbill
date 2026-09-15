@@ -4,7 +4,7 @@ import '../../models/sale_item.dart';
 import '../../providers/preference_provider.dart';
 import '../../services/printing_service.dart';
 import '../../config/theme.dart';
-import '../../utils/receipt_theme.dart';
+import '../../screens/settings/receipt_print_settings_screen.dart';
 import 'receipt_widget.dart';
 
 /// Modal dialog for visual receipt preview with 1-tap thermal printing.
@@ -33,10 +33,10 @@ class ReceiptPreviewDialog extends StatefulWidget {
     double? cashReceived,
     double? change,
   }) {
-    return showDialog<void>(
+    return showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (ctx) => ReceiptPreviewDialog(
+      builder: (_) => ReceiptPreviewDialog(
         sale: sale,
         items: items,
         settings: settings,
@@ -74,6 +74,8 @@ class _ReceiptPreviewDialogState extends State<ReceiptPreviewDialog> {
     try {
       final customSettings = widget.settings.copyWith(
         printerPaperSize: _paperSize,
+        printerPaperWidthMm: _paperSize == '58mm' ? 58.0 : 80.0,
+        isCustomPaperWidth: false,
         receiptLanguage: _language,
         receiptTemplate: _template,
       );
@@ -108,25 +110,33 @@ class _ReceiptPreviewDialogState extends State<ReceiptPreviewDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Dialog(
-      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade100,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 620,
-          maxHeight: MediaQuery.of(context).size.height * 0.9,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 780),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E2630) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Header Bar
+            // Dialog Header
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  Icon(Icons.receipt_long_rounded, color: AppTheme.primaryGreen, size: 24),
+                  const Icon(Icons.receipt_long_rounded, color: AppTheme.primaryGreen, size: 24),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -134,6 +144,18 @@ class _ReceiptPreviewDialogState extends State<ReceiptPreviewDialog> {
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.tune_rounded, size: 20),
+                    tooltip: 'Receipt Print & Paper Settings',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ReceiptPrintSettingsScreen(),
+                        ),
+                      );
+                    },
                   ),
                   IconButton(
                     icon: const Icon(Icons.close_rounded),
@@ -226,7 +248,13 @@ class _ReceiptPreviewDialogState extends State<ReceiptPreviewDialog> {
                     child: ReceiptWidget(
                       sale: widget.sale,
                       items: widget.items,
-                      settings: widget.settings,
+                      settings: widget.settings.copyWith(
+                        printerPaperSize: _paperSize,
+                        printerPaperWidthMm: _paperSize == '58mm' ? 58.0 : 80.0,
+                        isCustomPaperWidth: false,
+                        receiptLanguage: _language,
+                        receiptTemplate: _template,
+                      ),
                       cashReceived: widget.cashReceived,
                       change: widget.change,
                       overridePaperSize: _paperSize,

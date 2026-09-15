@@ -22,6 +22,7 @@ import '../../providers/preference_provider.dart';
 import '../../providers/business_modules_provider.dart';
 import '../../models/business_modules.dart';
 import '../../providers/cart_provider.dart';
+import '../../utils/tax_calculator.dart';
 import '../../providers/employee_provider.dart';
 import '../../providers/product_provider.dart';
 import '../../models/sale.dart';
@@ -35,6 +36,7 @@ import '../customers/customer_list_screen.dart';
 import '../reports/reports_screen.dart';
 import '../reports/sales_report_screen.dart';
 import '../reports/expense_management_screen.dart';
+import '../reports/vat_report_screen.dart';
 import '../settings/add_employee_screen.dart';
 import '../settings/settings_screen.dart';
 import '../../services/sinhala_search_service.dart';
@@ -1552,10 +1554,13 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
     final cart = ref.watch(cartProvider);
     final settings = ref.watch(settingsProvider);
     final l10n = PosL10n.of(settings.languageCode);
-    final grossSubtotal = cart.fold(0.0, (s, item) => s + item.subtotal);
-    final totalItemDiscount = cart.fold(0.0, (s, item) => s + item.discount);
-    final subtotal = (grossSubtotal - totalItemDiscount).clamp(0.0, double.infinity);
-    final total = subtotal;
+    final taxBreakdown = ref.watch(cartTaxBreakdownProvider);
+    final grossSubtotal = taxBreakdown.grossSubtotal;
+    final totalItemDiscount = taxBreakdown.itemDiscountTotal;
+    final totalVat = taxBreakdown.totalVat;
+    final total = taxBreakdown.grandTotal;
+    final isVatEnabled = taxBreakdown.isVatEnabled;
+    final isInclusive = taxBreakdown.pricingType == 'inclusive';
 
     final cartBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
@@ -1754,6 +1759,17 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                     label: 'Item Discounts',
                     value: '-${Formatters.currency(totalItemDiscount)}',
                     color: Colors.amber,
+                    isDark: isDark,
+                  ),
+                ],
+                if (isVatEnabled && totalVat > 0) ...[
+                  const SizedBox(height: 6),
+                  _TotalRow(
+                    label: isInclusive
+                        ? 'VAT (${taxBreakdown.defaultRate.toStringAsFixed(0)}% incl.)'
+                        : 'VAT (${taxBreakdown.defaultRate.toStringAsFixed(0)}%)',
+                    value: Formatters.currency(totalVat),
+                    color: const Color(0xFF6366F1),
                     isDark: isDark,
                   ),
                 ],
@@ -2049,6 +2065,7 @@ class _MoreMenuButton extends ConsumerWidget {
 
     // ── REPORTS & FINANCE ──
     if (canViewReports) {
+      addItem('vat_report', Icons.receipt_long_rounded, 'VAT / Tax Report', const Color(0xFF6366F1));
       addItem('expenses', Icons.money_off_rounded, 'Expenses', AppTheme.errorRed);
     }
 
@@ -2116,6 +2133,9 @@ class _MoreMenuButton extends ConsumerWidget {
             break;
           case 'suppliers':
             _push(context, const SupplierListScreen());
+            break;
+          case 'vat_report':
+            _push(context, const VatReportScreen());
             break;
           case 'expenses':
             _push(context, const ExpenseManagementScreen());
@@ -2946,18 +2966,23 @@ class _DesktopCheckoutDialog extends ConsumerStatefulWidget {
 
 class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> {
   String _paymentMethod = 'cash'; // 'cash', 'card', 'credit', 'other'
+  late String _invoiceType;
   final _cashController = TextEditingController();
   final _discountController = TextEditingController();
+  final _customerTinController = TextEditingController();
+  final _customerVatController = TextEditingController();
   bool _isProcessing = false;
 
   @override
   void initState() {
     super.initState();
-    _cashController.text = widget.total.toStringAsFixed(0);
+    final settings = ref.read(settingsProvider);
+    _invoiceType = settings.vatInvoiceMode;
+    final initialBreakdown = _getTaxBreakdown();
+    _cashController.text = initialBreakdown.grandTotal.toStringAsFixed(0);
     // Automatically eject cash drawer on desktop when starting cash payment function
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        final settings = ref.read(settingsProvider);
         if (_paymentMethod == 'cash' && settings.autoOpenCashDrawerOnCashStart) {
           CashDrawerService.instance.openCashDrawer(settings);
         }
@@ -2969,11 +2994,36 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
   void dispose() {
     _cashController.dispose();
     _discountController.dispose();
+    _customerTinController.dispose();
+    _customerVatController.dispose();
     super.dispose();
   }
 
+  TaxBreakdown _getTaxBreakdown() {
+    final settings = ref.read(settingsProvider);
+    final taxInputs = widget.cartItems
+        .map((c) => TaxInputItem(
+              productId: c.itemType == 'product' && !c.isQuickItem ? (c.product?.id ?? 0) : 0,
+              name: c.itemName,
+              quantity: c.quantity,
+              unitPrice: c.itemPrice,
+              itemDiscount: c.discount,
+              taxStatus: c.taxStatus,
+              customTaxRate: c.customTaxRate,
+            ))
+        .toList();
+
+    return TaxCalculator.calculate(
+      items: taxInputs,
+      defaultVatRate: settings.defaultVatRate,
+      isVatEnabled: settings.isVatEnabled,
+      pricingType: settings.vatPricingType,
+      billDiscount: _discount,
+    );
+  }
+
   double get _discount => double.tryParse(_discountController.text.replaceAll(',', '')) ?? 0;
-  double get _netTotal => (widget.total - _discount).clamp(0, double.infinity);
+  double get _netTotal => _getTaxBreakdown().grandTotal;
   double get _cashPaid => double.tryParse(_cashController.text.replaceAll(',', '')) ?? 0;
   double get _change => _cashPaid - _netTotal;
 
@@ -2988,27 +3038,69 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
     if (isCredit && widget.customer == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please attach a customer to issue store credit.'),
-          backgroundColor: AppTheme.errorRed,
+          content: Text('Please select a customer for credit sales'),
+          backgroundColor: AppTheme.warningOrange,
         ),
       );
       return;
     }
 
-    if (_paymentMethod == 'cash' && _cashPaid < _netTotal) {
+    if (_paymentMethod == 'cash' && _cashPaid < _netTotal && !isCredit) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Cash received is less than total due.'),
-          backgroundColor: AppTheme.errorRed,
+          content: Text('Cash paid is less than the net total'),
+          backgroundColor: AppTheme.warningOrange,
         ),
       );
       return;
     }
 
     final rootNavContext = Navigator.of(context, rootNavigator: true).context;
+
+    // Expiry Billing Safety Check
+    final expiredItems = widget.cartItems.where((item) => item.isExpired).toList();
+    if (expiredItems.isNotEmpty) {
+      final names = expiredItems.map((e) => e.itemName).toSet().join(', ');
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 24),
+              const SizedBox(width: 8),
+              const Text('Expired Stock Warning'),
+            ],
+          ),
+          content: Text(
+            'The following item(s) in cart have expired: $names.\n\nSelling expired products is prohibited under supermarket safety rules. Do you wish to override and proceed?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel & Review Cart'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.errorRed,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Manager Override'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) {
+        return;
+      }
+    }
+
     setState(() => _isProcessing = true);
 
     try {
+      final settings = ref.read(settingsProvider);
+      final taxBreakdown = _getTaxBreakdown();
       final saleActions = ref.read(saleActionsProvider);
       final createdSale = await saleActions.createSale(
         cartItems: widget.cartItems,
@@ -3018,10 +3110,19 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
         customerId: widget.customer?.id,
         customerName: widget.customer?.name,
         customerPhone: widget.customer?.phone,
+        taxableAmount: taxBreakdown.taxableAmount,
+        taxExemptAmount: taxBreakdown.exemptAmount,
+        taxZeroRatedAmount: taxBreakdown.zeroRatedAmount,
+        tax: taxBreakdown.totalVat,
+        isVatEnabled: settings.isVatEnabled,
+        vatRate: settings.defaultVatRate,
+        pricingType: settings.vatPricingType,
+        invoiceType: _invoiceType,
+        customerTin: _customerTinController.text.trim().isEmpty ? null : _customerTinController.text.trim(),
+        customerVatNumber: _customerVatController.text.trim().isEmpty ? null : _customerVatController.text.trim(),
       );
 
       // Eject cash drawer upon completing cash sale if enabled
-      final settings = ref.read(settingsProvider);
       if (_paymentMethod == 'cash' && settings.autoOpenCashDrawerOnSaleComplete) {
         CashDrawerService.instance.openCashDrawer(settings);
       }
@@ -3167,6 +3268,132 @@ class _DesktopCheckoutDialogState extends ConsumerState<_DesktopCheckoutDialog> 
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 ),
               ),
+
+              if (ref.watch(settingsProvider).isVatEnabled) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.25)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFF6366F1)),
+                              const SizedBox(width: 6),
+                              Text(
+                                ref.watch(settingsProvider).vatPricingType == 'inclusive'
+                                    ? 'VAT ${ref.watch(settingsProvider).defaultVatRate.toStringAsFixed(0)}% (Included)'
+                                    : 'VAT ${ref.watch(settingsProvider).defaultVatRate.toStringAsFixed(0)}% (Added to total)',
+                                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: const Color(0xFF6366F1)),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            Formatters.currency(_getTaxBreakdown().totalVat),
+                            style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w800, color: const Color(0xFF6366F1)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text(
+                            'Taxable Base: ${Formatters.currency(_getTaxBreakdown().taxableAmount)}',
+                            style: GoogleFonts.inter(fontSize: 11, color: subTextColor),
+                          ),
+                          if (_getTaxBreakdown().exemptAmount > 0) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '• Exempt: ${Formatters.currency(_getTaxBreakdown().exemptAmount)}',
+                              style: GoogleFonts.inter(fontSize: 11, color: Colors.amber.shade700),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Text(
+                      'RECEIPT FORMAT:',
+                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: subTextColor, letterSpacing: 0.5),
+                    ),
+                    const Spacer(),
+                    ChoiceChip(
+                      label: const Text('POS Slip'),
+                      selected: _invoiceType == 'normal',
+                      onSelected: (_) => setState(() => _invoiceType = 'normal'),
+                      selectedColor: const Color(0xFF10B981).withValues(alpha: 0.2),
+                      labelStyle: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _invoiceType == 'normal' ? const Color(0xFF10B981) : subTextColor,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    ChoiceChip(
+                      label: const Text('VAT / Tax Invoice'),
+                      selected: _invoiceType == 'tax_invoice',
+                      onSelected: (_) => setState(() => _invoiceType = 'tax_invoice'),
+                      selectedColor: const Color(0xFF6366F1).withValues(alpha: 0.2),
+                      labelStyle: GoogleFonts.inter(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _invoiceType == 'tax_invoice' ? const Color(0xFF6366F1) : subTextColor,
+                      ),
+                    ),
+                  ],
+                ),
+                if (_invoiceType == 'tax_invoice') ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _customerTinController,
+                          style: GoogleFonts.inter(color: inputTextColor, fontSize: 13),
+                          decoration: InputDecoration(
+                            labelText: 'Buyer TIN (Optional)',
+                            labelStyle: GoogleFonts.inter(color: inputHintColor, fontSize: 11),
+                            isDense: true,
+                            filled: true,
+                            fillColor: inputBg,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: inputBorder),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: inputBorder),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _customerVatController,
+                          style: GoogleFonts.inter(color: inputTextColor, fontSize: 13),
+                          decoration: InputDecoration(
+                            labelText: 'Buyer VAT # (Optional)',
+                            labelStyle: GoogleFonts.inter(color: inputHintColor, fontSize: 11),
+                            isDense: true,
+                            filled: true,
+                            fillColor: inputBg,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: inputBorder),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: inputBorder),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
 
               const SizedBox(height: 18),
               Text(
@@ -3537,22 +3764,50 @@ void _showPostSaleDialog(
   final dialogBg = isDark ? const Color(0xFF1E293B) : Colors.white;
   final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
 
-  List<SaleItem> buildSaleItems() => cartItems
-      .map((c) => SaleItem(
-            saleId: sale.id ?? 0,
-            productId: c.itemType == 'product' && !c.isQuickItem ? (c.product?.id ?? 0) : 0,
-            itemType: c.itemType,
-            serviceId: c.serviceId,
-            productName: c.itemName,
-            quantity: c.quantity,
-            unitPrice: c.itemPrice,
-            total: c.total,
-            costPrice: (c.itemType == 'product' && !c.isQuickItem) ? (c.product?.costPrice ?? 0.0) : 0.0,
-            batchId: c.batchId,
-            batchNumber: c.batchNumber,
-            discount: c.discount,
-          ))
-      .toList();
+  List<SaleItem> buildSaleItems() {
+    final taxInputs = cartItems
+        .map((c) => TaxInputItem(
+              productId: c.itemType == 'product' && !c.isQuickItem ? (c.product?.id ?? 0) : 0,
+              name: c.itemName,
+              quantity: c.quantity,
+              unitPrice: c.itemPrice,
+              itemDiscount: c.discount,
+              taxStatus: c.taxStatus,
+              customTaxRate: c.customTaxRate,
+            ))
+        .toList();
+
+    final taxBreakdown = TaxCalculator.calculate(
+      items: taxInputs,
+      defaultVatRate: sale.vatRate,
+      isVatEnabled: sale.isVatEnabled,
+      pricingType: sale.pricingType,
+      billDiscount: sale.discount,
+    );
+
+    return List.generate(cartItems.length, (i) {
+      final c = cartItems[i];
+      final t = i < taxBreakdown.items.length ? taxBreakdown.items[i] : null;
+      return SaleItem(
+        saleId: sale.id ?? 0,
+        productId: c.itemType == 'product' && !c.isQuickItem ? (c.product?.id ?? 0) : 0,
+        itemType: c.itemType,
+        serviceId: c.serviceId,
+        productName: c.itemName,
+        quantity: c.quantity,
+        unitPrice: c.itemPrice,
+        total: c.total,
+        costPrice: (c.itemType == 'product' && !c.isQuickItem) ? (c.product?.costPrice ?? 0.0) : 0.0,
+        batchId: c.batchId,
+        batchNumber: c.batchNumber,
+        discount: c.discount,
+        taxStatus: t?.taxStatus ?? c.taxStatus,
+        taxRate: t?.taxRate ?? 0.0,
+        taxAmount: t?.taxAmount ?? 0.0,
+        taxableAmount: t?.taxableAmount ?? 0.0,
+      );
+    });
+  }
 
   final effectiveCashReceived = cashReceived ?? (sale.paymentMethod.toLowerCase() == 'cash' ? (total + change) : null);
 

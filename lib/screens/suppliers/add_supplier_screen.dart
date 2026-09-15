@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../utils/category_constants.dart';
 import '../../utils/category_icon_util.dart';
 import '../../utils/l10n_extensions.dart';
+import '../../utils/category_search_util.dart';
 
 class AddSupplierScreen extends ConsumerStatefulWidget {
   final Supplier? supplier;
@@ -186,12 +187,12 @@ class _AddSupplierScreenState extends ConsumerState<AddSupplierScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Search box for categories
+                      // Search box for categories with Singlish / Sinhala / English support
                       SinglishTextFormField(
                         controller: _categorySearchController,
-                        showSuggestionBanner: false,
+                        showSuggestionBanner: true,
                         decoration: InputDecoration(
-                          hintText: 'Search categories...',
+                          hintText: 'Search categories (Singlish / සිංහල / English)...',
                           prefixIcon: const Icon(Icons.search, size: 20),
                           suffixIcon: _categorySearchController.text.isNotEmpty
                               ? IconButton(
@@ -230,26 +231,41 @@ class _AddSupplierScreenState extends ConsumerState<AddSupplierScreen> {
                         const SizedBox(height: 8),
                         Builder(
                           builder: (context) {
-                            final query = _categorySearchController.text.trim().toLowerCase();
-                            final matchingMain = CategoryConstants.mainCategories
-                                .where((cat) => cat.toLowerCase().contains(query) ||
-                                                context.getLocalizedCategory(cat).toLowerCase().contains(query))
-                                .toList();
-                            final matchingSub = CategoryConstants.allSubcategories
-                                .where((sub) => sub.toLowerCase().contains(query) ||
-                                                context.getLocalizedCategory(sub).toLowerCase().contains(query))
-                                .toList();
+                            final query = _categorySearchController.text.trim();
+                            final matchingMain = CategorySearchUtil.filterMainCategories(query, context: context);
+                            final matchingSub = CategorySearchUtil.filterSubcategories(query, context: context);
 
                             if (matchingMain.isEmpty && matchingSub.isEmpty) {
                               return Padding(
                                 padding: const EdgeInsets.all(16),
                                 child: Center(
-                                  child: Text(
-                                    'No categories found.',
-                                    style: GoogleFonts.plusJakartaSans(
-                                      color: context.subText,
-                                      fontSize: 12,
-                                    ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.search_off_rounded,
+                                        size: 32,
+                                        color: context.subText.withValues(alpha: 0.5),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'No categories found for "$query".',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          color: context.subText,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Try searching in Singlish (e.g. kiri, parippu, mas, seeni, pan), Sinhala, or English.',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          color: context.subText.withValues(alpha: 0.7),
+                                          fontSize: 11,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
                                   ),
                                 ),
                               );

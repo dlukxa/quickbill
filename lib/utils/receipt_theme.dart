@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../providers/preference_provider.dart';
 
 /// Standardized typography and layout metrics for thermal receipt rendering.
 /// Pure black (#000000) on white (#FFFFFF) ensures ultra-sharp monochrome thermal raster output.
@@ -18,7 +19,10 @@ class ReceiptTheme {
   // 80mm standard: 72mm printable area * 8 dots/mm = 576 pixels
   static const double width80mm = 576.0;
 
-  static double getReceiptWidth(bool is58mm) => is58mm ? width58mm : width80mm;
+  static double getReceiptWidth(bool is58mm, {AppSettings? settings}) {
+    if (settings != null) return settings.effectiveReceiptWidthPx;
+    return is58mm ? width58mm : width80mm;
+  }
 
   // ─── Text Styles ───
   static TextStyle textStyle({
@@ -27,107 +31,207 @@ class ReceiptTheme {
     Color color = Colors.black,
     double height = 1.25,
     TextDecoration? decoration,
+    bool forceBold = false,
   }) {
+    final effectiveWeight = forceBold
+        ? (fontWeight == FontWeight.normal ? FontWeight.w700 : FontWeight.w900)
+        : fontWeight;
+
     return TextStyle(
       fontFamily: fontFamily,
       fontFamilyFallback: fontFamilyFallback,
       fontSize: fontSize,
-      fontWeight: fontWeight,
+      fontWeight: effectiveWeight,
       color: color,
       height: height,
       decoration: decoration,
     );
   }
 
-  static TextStyle storeTitle(bool is58mm) => textStyle(
-        fontSize: is58mm ? 16.0 : 20.0,
-        fontWeight: FontWeight.w800,
-        height: 1.2,
-      );
+  static TextStyle storeTitle(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings?.receiptStoreNameFontSize ?? (is58mm ? 16.0 : 20.0);
+    final double height = settings?.receiptLineSpacing ?? 1.2;
+    final bool bold = settings?.receiptBoldText ?? false;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w800,
+      height: height,
+      forceBold: bold,
+    );
+  }
 
-  static TextStyle storeSubtitle(bool is58mm) => textStyle(
-        fontSize: is58mm ? 10.0 : 12.0,
-        fontWeight: FontWeight.normal,
-        height: 1.25,
-      );
+  static TextStyle storeSubtitle(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings != null
+        ? (settings.receiptMainFontSize * 0.9)
+        : (is58mm ? 10.0 : 12.0);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    final bool bold = settings?.receiptBoldText ?? false;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.normal,
+      height: height,
+      forceBold: bold,
+    );
+  }
 
-  static TextStyle metaText(bool is58mm, {bool isBold = false}) => textStyle(
-        fontSize: is58mm ? 9.5 : 12.0,
-        fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
-        height: 1.25,
-      );
+  static TextStyle metaText(bool is58mm, {bool isBold = false, AppSettings? settings}) {
+    final double baseSize = settings != null
+        ? (isBold ? settings.receiptMainFontSize : settings.receiptMainFontSize * 0.95)
+        : (is58mm ? 9.5 : 12.0);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    final bool bold = (settings?.receiptBoldText ?? false) || isBold;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
+      height: height,
+      forceBold: bold,
+    );
+  }
 
-  static TextStyle tableHeader(bool is58mm) => textStyle(
-        fontSize: is58mm ? 9.5 : 11.5,
-        fontWeight: FontWeight.w800,
-        height: 1.2,
-      );
+  static TextStyle tableHeader(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings != null
+        ? (settings.receiptMainFontSize * 0.95)
+        : (is58mm ? 9.5 : 11.5);
+    final double height = settings?.receiptLineSpacing ?? 1.2;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w800,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 
-  static TextStyle itemName(bool is58mm) => textStyle(
-        fontSize: is58mm ? 11.0 : 13.5,
-        fontWeight: FontWeight.w700,
-        height: 1.25,
-      );
+  static TextStyle itemName(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings?.receiptProductNameFontSize ?? (is58mm ? 11.0 : 13.5);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w700,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 
-  static TextStyle itemDetail(bool is58mm, {bool isBold = false}) => textStyle(
-        fontSize: is58mm ? 10.0 : 12.0,
-        fontWeight: isBold ? FontWeight.w700 : FontWeight.normal,
-        height: 1.25,
-      );
+  static TextStyle itemDetail(bool is58mm, {bool isBold = false, AppSettings? settings}) {
+    final double baseSize = settings?.receiptQtyPriceFontSize ?? (is58mm ? 10.0 : 12.0);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    final bool bold = (settings?.receiptBoldText ?? false) || isBold;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: isBold ? FontWeight.w700 : FontWeight.normal,
+      height: height,
+      forceBold: bold,
+    );
+  }
 
-  static TextStyle itemDiscount(bool is58mm) => textStyle(
-        fontSize: is58mm ? 9.0 : 11.0,
-        fontWeight: FontWeight.w500,
-        height: 1.2,
-      );
+  static TextStyle itemDiscount(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings != null
+        ? (settings.receiptDiscountFontSize * 0.88)
+        : (is58mm ? 9.0 : 11.0);
+    final double height = settings?.receiptLineSpacing ?? 1.2;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w500,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 
-  static TextStyle summaryLabel(bool is58mm, {bool isBold = false}) => textStyle(
-        fontSize: is58mm ? 10.5 : 13.0,
-        fontWeight: isBold ? FontWeight.w700 : FontWeight.normal,
-        height: 1.25,
-      );
+  static TextStyle summaryLabel(bool is58mm, {bool isBold = false, AppSettings? settings}) {
+    final double baseSize = settings?.receiptSubtotalFontSize ?? (is58mm ? 10.5 : 13.0);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    final bool bold = (settings?.receiptBoldText ?? false) || isBold;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: isBold ? FontWeight.w700 : FontWeight.normal,
+      height: height,
+      forceBold: bold,
+    );
+  }
 
-  static TextStyle summaryValue(bool is58mm, {bool isBold = false}) => textStyle(
-        fontSize: is58mm ? 10.5 : 13.0,
-        fontWeight: isBold ? FontWeight.w800 : FontWeight.normal,
-        height: 1.25,
-      );
+  static TextStyle summaryValue(bool is58mm, {bool isBold = false, AppSettings? settings}) {
+    final double baseSize = settings?.receiptSubtotalFontSize ?? (is58mm ? 10.5 : 13.0);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    final bool bold = (settings?.receiptBoldText ?? false) || isBold;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: isBold ? FontWeight.w800 : FontWeight.normal,
+      height: height,
+      forceBold: bold,
+    );
+  }
 
-  static TextStyle savingsLabel(bool is58mm) => textStyle(
-        fontSize: is58mm ? 12.0 : 14.5,
-        fontWeight: FontWeight.w800,
-        height: 1.25,
-      );
+  static TextStyle savingsLabel(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings?.receiptDiscountFontSize ?? (is58mm ? 12.0 : 14.5);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w800,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 
-  static TextStyle savingsValue(bool is58mm) => textStyle(
-        fontSize: is58mm ? 12.5 : 15.0,
-        fontWeight: FontWeight.w900,
-        height: 1.25,
-      );
+  static TextStyle savingsValue(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings != null
+        ? (settings.receiptDiscountFontSize * 1.05)
+        : (is58mm ? 12.5 : 15.0);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w900,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 
-  static TextStyle grandTotalLabel(bool is58mm) => textStyle(
-        fontSize: is58mm ? 15.0 : 18.0,
-        fontWeight: FontWeight.w900,
-        height: 1.2,
-      );
+  static TextStyle grandTotalLabel(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings?.receiptGrandTotalFontSize ?? (is58mm ? 15.0 : 18.0);
+    final double height = settings?.receiptLineSpacing ?? 1.2;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w900,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 
-  static TextStyle grandTotalValue(bool is58mm) => textStyle(
-        fontSize: is58mm ? 16.0 : 20.0,
-        fontWeight: FontWeight.w900,
-        height: 1.2,
-      );
+  static TextStyle grandTotalValue(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings != null
+        ? (settings.receiptGrandTotalFontSize * 1.1)
+        : (is58mm ? 16.0 : 20.0);
+    final double height = settings?.receiptLineSpacing ?? 1.2;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w900,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 
-  static TextStyle footerThankYou(bool is58mm) => textStyle(
-        fontSize: is58mm ? 11.5 : 14.0,
-        fontWeight: FontWeight.w700,
-        height: 1.25,
-      );
+  static TextStyle footerThankYou(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings?.receiptFooterFontSize ?? (is58mm ? 11.5 : 14.0);
+    final double height = settings?.receiptLineSpacing ?? 1.25;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w700,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 
-  static TextStyle footerCredit(bool is58mm) => textStyle(
-        fontSize: is58mm ? 8.5 : 10.5,
-        fontWeight: FontWeight.w500,
-        height: 1.2,
-      );
+  static TextStyle footerCredit(bool is58mm, {AppSettings? settings}) {
+    final double baseSize = settings != null
+        ? (settings.receiptFooterFontSize * 0.85)
+        : (is58mm ? 8.5 : 10.5);
+    final double height = settings?.receiptLineSpacing ?? 1.2;
+    return textStyle(
+      fontSize: baseSize,
+      fontWeight: FontWeight.w500,
+      height: height,
+      forceBold: settings?.receiptBoldText ?? false,
+    );
+  }
 }
 
 /// Custom dashed divider optimized for thermal receipt rendering

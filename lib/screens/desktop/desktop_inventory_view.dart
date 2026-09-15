@@ -8,19 +8,20 @@ import '../../providers/product_provider.dart';
 import '../../services/sinhala_search_service.dart';
 import '../../utils/formatters.dart';
 import '../../utils/pos_l10n.dart';
-import '../../widgets/add_stock_dialog.dart';
-import '../../widgets/cached_product_image.dart';
+import '../../widgets/inventory/bulk_stock_adjustment_dialog.dart';
+import '../../widgets/inventory/excel_inventory_table.dart';
 import '../stock/add_product_screen.dart';
-import '../stock/batch_list_screen.dart';
 import '../stock/product_price_manager_screen.dart';
 import '../stock/archived_products_screen.dart';
-import '../inventory/stock_history_screen.dart';
+import '../../providers/expiry_provider.dart';
+import '../inventory/expiry_management_screen.dart';
 
 class DesktopInventoryView extends ConsumerStatefulWidget {
   const DesktopInventoryView({super.key});
 
   @override
-  ConsumerState<DesktopInventoryView> createState() => _DesktopInventoryViewState();
+  ConsumerState<DesktopInventoryView> createState() =>
+      _DesktopInventoryViewState();
 }
 
 class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
@@ -28,6 +29,17 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
   final _searchController = TextEditingController();
   String _statusFilter = 'all'; // 'all', 'low', 'out'
   String? _selectedCategory;
+
+  // Selection state for bulk operations
+  final Set<int> _selectedProductIds = {};
+
+  // Sorting state
+  String _sortColumn = 'name';
+  bool _sortAscending = true;
+
+  // Pagination state
+  int _currentPage = 1;
+  int _pageSize = 50; // 25, 50, 100, or -1 for All
 
   @override
   void dispose() {
@@ -46,42 +58,127 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
     });
   }
 
-  void _openRestock(Product product) async {
-    final res = await AddStockDialog.show(
+  void _openBulkAdjust(List<Product> allProducts) async {
+    final selected = allProducts
+        .where((p) => p.id != null && _selectedProductIds.contains(p.id))
+        .toList();
+
+    if (selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one product first')),
+      );
+      return;
+    }
+
+    final res = await BulkStockAdjustmentDialog.show(
       context,
-      product: product,
-      isDark: Theme.of(context).brightness == Brightness.dark,
+      selectedProducts: selected,
     );
+
     if (res == true) {
       ref.invalidate(productsProvider);
+      setState(() => _selectedProductIds.clear());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Successfully updated ${selected.length} products'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
     }
   }
 
-  Future<void> _deleteProduct(Product product) async {
+  Future<void> _bulkArchive(List<Product> allProducts) async {
+    final selected = allProducts
+        .where((p) => p.id != null && _selectedProductIds.contains(p.id))
+        .toList();
+
+    if (selected.isEmpty) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Archive Product'),
-        content: Text('Are you sure you want to archive "${product.name}"? It will be moved to archived items.'),
+        title: const Text('Archive Selected Products'),
+        content: Text(
+          'Are you sure you want to archive ${selected.length} selected products? They will be hidden from billing.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.errorRed,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Archive'),
+            child: const Text('Archive All'),
           ),
         ],
       ),
     );
 
-    if (confirm == true && product.id != null) {
-      await ref.read(productActionsProvider).deleteProduct(product.id!);
+    if (confirm == true) {
+      final productActions = ref.read(productActionsProvider);
+      for (final p in selected) {
+        if (p.id != null) {
+          await productActions.deleteProduct(p.id!);
+        }
+      }
+      setState(() => _selectedProductIds.clear());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Archived "${product.name}"')),
+          SnackBar(content: Text('Archived ${selected.length} products')),
         );
       }
     }
+  }
+
+  List<Product> _sortProducts(List<Product> list) {
+    final sorted = List<Product>.from(list);
+    sorted.sort((a, b) {
+      int cmp = 0;
+      switch (_sortColumn) {
+        case 'name':
+          cmp = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          break;
+        case 'nameSinhala':
+          final sA = a.nameSinhala ?? '';
+          final sB = b.nameSinhala ?? '';
+          cmp = sA.compareTo(sB);
+          break;
+        case 'barcode':
+          final bA = a.baseBarcode ?? '';
+          final bB = b.baseBarcode ?? '';
+          cmp = bA.compareTo(bB);
+          break;
+        case 'category':
+          final cA = a.category ?? '';
+          final cB = b.category ?? '';
+          cmp = cA.compareTo(cB);
+          break;
+        case 'stock':
+          cmp = a.stock.compareTo(b.stock);
+          break;
+        case 'minStock':
+          cmp = a.minStock.compareTo(b.minStock);
+          break;
+        case 'costPrice':
+          final cA = a.costPrice ?? 0.0;
+          final cB = b.costPrice ?? 0.0;
+          cmp = cA.compareTo(cB);
+          break;
+        case 'price':
+          cmp = a.price.compareTo(b.price);
+          break;
+        default:
+          cmp = a.name.compareTo(b.name);
+      }
+      return _sortAscending ? cmp : -cmp;
+    });
+    return sorted;
   }
 
   @override
@@ -90,6 +187,8 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
     final posL10n = PosL10n.of(settings.languageCode);
     final isDark = settings.isDarkMode;
     final productsAsync = ref.watch(productsProvider);
+    final expirySummary = ref.watch(expirySummaryProvider);
+    final alertCount = expirySummary.totalExpiredProducts + expirySummary.expiringSoonProducts;
 
     final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
@@ -101,15 +200,22 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
       color: bg,
       child: productsAsync.when(
         data: (allProducts) {
-          final activeProducts = allProducts.where((p) => p.deleted != true).toList();
+          final activeProducts =
+              allProducts.where((p) => p.deleted != true).toList();
 
-          // Calculate statistics
+          // Statistics
           final totalCount = activeProducts.length;
-          final lowStockList = activeProducts.where((p) => p.stock > 0 && p.stock <= p.minStock).toList();
-          final outOfStockList = activeProducts.where((p) => p.stock <= 0).toList();
-          final totalValuation = activeProducts.fold(0.0, (sum, p) => sum + (p.stock * (p.costPrice ?? p.price)));
+          final lowStockList = activeProducts
+              .where((p) => p.stock > 0 && p.stock <= p.minStock)
+              .toList();
+          final outOfStockList =
+              activeProducts.where((p) => p.stock <= 0).toList();
+          final totalValuation = activeProducts.fold(
+            0.0,
+            (sum, p) => sum + (p.stock * (p.costPrice ?? p.price)),
+          );
 
-          // Extract unique categories
+          // Unique Categories
           final categories = <String>{};
           for (final p in activeProducts) {
             if (p.category != null && p.category!.trim().isNotEmpty) {
@@ -118,7 +224,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
           }
           final sortedCategories = categories.toList()..sort();
 
-          // Apply filters
+          // Filtering
           List<Product> displayed = activeProducts;
           if (_statusFilter == 'low') {
             displayed = lowStockList;
@@ -127,14 +233,38 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
           }
 
           if (_selectedCategory != null) {
-            displayed = displayed.where((p) => p.category == _selectedCategory).toList();
+            displayed = displayed
+                .where((p) => p.category == _selectedCategory)
+                .toList();
           }
 
           if (_searchQuery.trim().isNotEmpty) {
-            displayed = SinhalaSearchService.filterAndRank(displayed, _searchQuery.trim());
+            displayed =
+                SinhalaSearchService.filterAndRank(displayed, _searchQuery.trim());
           }
 
-          return SingleChildScrollView(
+          // Sorting
+          displayed = _sortProducts(displayed);
+
+          // Pagination
+          final totalFiltered = displayed.length;
+          final effectivePageSize =
+              _pageSize == -1 ? totalFiltered : _pageSize;
+          final totalPages = effectivePageSize > 0
+              ? (totalFiltered / effectivePageSize).ceil().clamp(1, 9999)
+              : 1;
+          final clampedPage = _currentPage.clamp(1, totalPages);
+
+          final startIndex = (clampedPage - 1) * effectivePageSize;
+          final endIndex = (startIndex + effectivePageSize) > totalFiltered
+              ? totalFiltered
+              : (startIndex + effectivePageSize);
+
+          final pageItems = (startIndex < totalFiltered)
+              ? displayed.sublist(startIndex, endIndex)
+              : <Product>[];
+
+          return Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,34 +273,95 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          posL10n.inventoryCatalog,
-                          style: GoogleFonts.plusJakartaSans(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: textPrimary,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 10,
+                            runSpacing: 4,
+                            children: [
+                              Text(
+                                posL10n.inventoryCatalog,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: textPrimary,
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryGreen.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.table_chart_rounded,
+                                      size: 14,
+                                      color: AppTheme.primaryGreen,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Excel Edit Mode',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primaryGreen,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          posL10n.inventorySubtitle,
-                          style: GoogleFonts.inter(fontSize: 13, color: textSecondary),
-                        ),
-                      ],
+                          const SizedBox(height: 4),
+                          Text(
+                            'Click any cell to edit inline. Press Enter to save and move down, Tab to move across.',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 16),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        if (_selectedProductIds.isNotEmpty)
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.tune_rounded, size: 16),
+                            label: Text('Bulk Adjust (${_selectedProductIds.length})'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            onPressed: () => _openBulkAdjust(activeProducts),
+                          ),
                         OutlinedButton.icon(
                           icon: const Icon(Icons.price_change_rounded, size: 16),
                           label: Text(posL10n.pricesAndUnits),
                           onPressed: () => Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const ProductPriceManagerScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const ProductPriceManagerScreen(),
+                            ),
                           ),
                         ),
                         OutlinedButton.icon(
@@ -178,7 +369,54 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                           label: Text(posL10n.archived),
                           onPressed: () => Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const ArchivedProductsScreen()),
+                            MaterialPageRoute(
+                              builder: (_) => const ArchivedProductsScreen(),
+                            ),
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          icon: Badge(
+                            isLabelVisible: alertCount > 0,
+                            backgroundColor: expirySummary.totalExpiredProducts > 0
+                                ? AppTheme.errorRed
+                                : const Color(0xFFF59E0B),
+                            label: Text(
+                              '$alertCount',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.event_busy_rounded,
+                              size: 16,
+                              color: alertCount > 0
+                                  ? (expirySummary.totalExpiredProducts > 0
+                                      ? AppTheme.errorRed
+                                      : const Color(0xFFF59E0B))
+                                  : null,
+                            ),
+                          ),
+                          label: const Text('Expiry Alerts'),
+                          style: alertCount > 0
+                              ? OutlinedButton.styleFrom(
+                                  side: BorderSide(
+                                    color: (expirySummary.totalExpiredProducts > 0
+                                            ? AppTheme.errorRed
+                                            : const Color(0xFFF59E0B))
+                                        .withValues(alpha: 0.5),
+                                  ),
+                                  foregroundColor: expirySummary.totalExpiredProducts > 0
+                                      ? AppTheme.errorRed
+                                      : const Color(0xFFF59E0B),
+                                )
+                              : null,
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ExpiryManagementScreen(),
+                            ),
                           ),
                         ),
                         ElevatedButton.icon(
@@ -187,8 +425,13 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryGreen,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           onPressed: () => _openAddProduct(),
                         ),
@@ -196,7 +439,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
                 // ── KPI Summary Cards ──
                 Row(
@@ -218,7 +461,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                       child: _buildMetricCard(
                         title: posL10n.lowStockAlert,
                         value: lowStockList.length.toString(),
-                        subtitle: 'Below threshold',
+                        subtitle: 'Below reorder threshold',
                         color: Colors.amber.shade700,
                         cardBg: cardBg,
                         border: border,
@@ -231,7 +474,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                       child: _buildMetricCard(
                         title: posL10n.outOfStockBadge,
                         value: outOfStockList.length.toString(),
-                        subtitle: 'Requires immediate restock',
+                        subtitle: 'Needs immediate restock',
                         color: AppTheme.errorRed,
                         cardBg: cardBg,
                         border: border,
@@ -244,7 +487,7 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                       child: _buildMetricCard(
                         title: posL10n.totalValuation,
                         value: Formatters.currency(totalValuation),
-                        subtitle: 'Inventory at cost',
+                        subtitle: 'Inventory valuation at cost',
                         color: AppTheme.primaryGreen,
                         cardBg: cardBg,
                         border: border,
@@ -254,11 +497,11 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
                 // ── Search & Filter Controls ──
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: cardBg,
                     borderRadius: BorderRadius.circular(14),
@@ -271,26 +514,37 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                         flex: 4,
                         child: TextField(
                           controller: _searchController,
-                          onChanged: (val) => setState(() => _searchQuery = val),
+                          onChanged: (val) => setState(() {
+                            _searchQuery = val;
+                            _currentPage = 1;
+                          }),
                           decoration: InputDecoration(
-                            hintText: posL10n.searchHint,
+                            hintText: 'Search by Name, Sinhala Name, or Barcode...',
                             prefixIcon: const Icon(Icons.search_rounded, size: 20),
                             suffixIcon: _searchQuery.isNotEmpty
                                 ? IconButton(
                                     icon: const Icon(Icons.clear_rounded, size: 18),
                                     onPressed: () {
                                       _searchController.clear();
-                                      setState(() => _searchQuery = '');
+                                      setState(() {
+                                        _searchQuery = '';
+                                        _currentPage = 1;
+                                      });
                                     },
                                   )
                                 : null,
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: 12),
 
                       // Category Dropdown
                       Expanded(
@@ -298,11 +552,17 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                         child: DropdownButtonFormField<String?>(
                           value: _selectedCategory,
                           isDense: true,
+                          isExpanded: true,
                           decoration: InputDecoration(
                             labelText: posL10n.categoryCol,
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           items: [
                             DropdownMenuItem<String?>(
@@ -314,54 +574,153 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                                   child: Text(c, overflow: TextOverflow.ellipsis),
                                 )),
                           ],
-                          onChanged: (val) => setState(() => _selectedCategory = val),
+                          onChanged: (val) => setState(() {
+                            _selectedCategory = val;
+                            _currentPage = 1;
+                          }),
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: 12),
 
                       // Status Segmented Filter
                       Expanded(
                         flex: 3,
                         child: SegmentedButton<String>(
                           segments: [
-                            ButtonSegment(value: 'all', label: Text(posL10n.allItems, overflow: TextOverflow.ellipsis)),
+                            ButtonSegment(
+                              value: 'all',
+                              label: Text(
+                                posL10n.allItems,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                             ButtonSegment(
                               value: 'low',
-                              label: Text('${posL10n.lowStock} (${lowStockList.length})', overflow: TextOverflow.ellipsis),
+                              label: Text(
+                                '${posL10n.lowStock} (${lowStockList.length})',
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                             ButtonSegment(
                               value: 'out',
-                              label: Text('${posL10n.outOfStock} (${outOfStockList.length})', overflow: TextOverflow.ellipsis),
+                              label: Text(
+                                '${posL10n.outOfStock} (${outOfStockList.length})',
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                           selected: {_statusFilter},
-                          onSelectionChanged: (set) => setState(() => _statusFilter = set.first),
+                          onSelectionChanged: (set) => setState(() {
+                            _statusFilter = set.first;
+                            _currentPage = 1;
+                          }),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
-                // ── Data Table ──
-                Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: border),
+                // ── Bulk Actions Floating Bar ──
+                if (_selectedProductIds.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF1E293B)
+                          : const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primaryBlue.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.check_circle_outline_rounded,
+                          color: AppTheme.primaryBlue,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          '${_selectedProductIds.length} products selected',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const Spacer(),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.tune_rounded, size: 16),
+                          label: const Text('Adjust Stock (+/-)'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          onPressed: () => _openBulkAdjust(activeProducts),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.archive_outlined, size: 16),
+                          label: const Text('Archive Selected'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.errorRed,
+                            side: const BorderSide(color: AppTheme.errorRed),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                          ),
+                          onPressed: () => _bulkArchive(activeProducts),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _selectedProductIds.clear()),
+                          child: const Text('Deselect All'),
+                        ),
+                      ],
+                    ),
                   ),
+
+                // ── Excel Data Table Viewport ──
+                Expanded(
                   child: displayed.isEmpty
-                      ? Padding(
+                      ? Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: cardBg,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: border),
+                          ),
                           padding: const EdgeInsets.all(48),
                           child: Center(
                             child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.inventory_2_outlined, size: 48, color: textSecondary),
+                                Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 48,
+                                  color: textSecondary,
+                                ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  _searchQuery.isNotEmpty ? 'No products match "$_searchQuery"' : posL10n.noProductsFound,
-                                  style: GoogleFonts.inter(fontSize: 15, color: textSecondary, fontWeight: FontWeight.w600),
+                                  _searchQuery.isNotEmpty
+                                      ? 'No products match "$_searchQuery"'
+                                      : posL10n.noProductsFound,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 15,
+                                    color: textSecondary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 ElevatedButton.icon(
@@ -373,255 +732,116 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                             ),
                           ),
                         )
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: DataTable(
-                            headingRowColor: WidgetStateProperty.all(
-                              isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF1F5F9),
-                            ),
-                            dataRowMinHeight: 52,
-                            dataRowMaxHeight: 64,
-                            columnSpacing: 18,
-                            columns: [
-                              DataColumn(label: Text(posL10n.productCol)),
-                              DataColumn(label: Text(posL10n.barcodeCol)),
-                              DataColumn(label: Text(posL10n.categoryCol)),
-                              DataColumn(label: Text('${posL10n.costCol} (RS.)'), numeric: true),
-                              DataColumn(label: Text('${posL10n.sellingPriceCol} (RS.)'), numeric: true),
-                              DataColumn(label: Text(posL10n.multiModeBadge)),
-                              DataColumn(label: Text(posL10n.stockLevelCol), numeric: true),
-                              DataColumn(label: Text(posL10n.status)),
-                              DataColumn(label: Text(posL10n.actionsCol)),
-                            ],
-                            rows: displayed.map((p) {
-                              final isOut = p.stock <= 0;
-                              final isLow = p.stock > 0 && p.stock <= p.minStock;
-
-                              Color badgeBg = AppTheme.primaryGreen.withValues(alpha: 0.12);
-                              Color badgeFg = AppTheme.primaryGreen;
-                              String badgeLabel = posL10n.inStock;
-
-                              if (isOut) {
-                                badgeBg = AppTheme.errorRed.withValues(alpha: 0.12);
-                                badgeFg = AppTheme.errorRed;
-                                badgeLabel = posL10n.outOfStock;
-                              } else if (isLow) {
-                                badgeBg = Colors.amber.withValues(alpha: 0.15);
-                                badgeFg = Colors.amber.shade800;
-                                badgeLabel = posL10n.lowStock;
-                              }
-
-                              return DataRow(
-                                cells: [
-                                  // Product details with image & Sinhala/English subtitle
-                                  DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(8),
-                                          child: SizedBox(
-                                            width: 40,
-                                            height: 40,
-                                            child: CachedProductImage(
-                                              imageUrl: p.imageUrl ?? '',
-                                              fit: BoxFit.cover,
-                                              placeholder: Container(
-                                                color: isDark ? Colors.white10 : const Color(0xFFE2E8F0),
-                                                child: const Icon(Icons.inventory_2_outlined, size: 20),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(maxWidth: 220),
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                p.name,
-                                                style: GoogleFonts.notoSansSinhala(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 13,
-                                                  color: textPrimary,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                              if (p.nameSinhala != null && p.nameSinhala!.isNotEmpty && p.nameSinhala != p.name)
-                                                Text(
-                                                  p.nameSinhala!,
-                                                  style: GoogleFonts.notoSansSinhala(
-                                                    fontSize: 11,
-                                                    color: textSecondary,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // Barcode
-                                  DataCell(
-                                    Text(
-                                      p.baseBarcode?.isNotEmpty == true ? p.baseBarcode! : '—',
-                                      style: GoogleFonts.inter(fontSize: 12, color: textSecondary),
-                                    ),
-                                  ),
-
-                                  // Category
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: Text(
-                                        p.category?.isNotEmpty == true ? p.category! : 'General',
-                                        style: GoogleFonts.inter(fontSize: 11, color: textSecondary),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Cost
-                                  DataCell(
-                                    Text(
-                                      p.costPrice != null ? Formatters.number(p.costPrice!, decimalPlaces: 2) : '—',
-                                      style: GoogleFonts.inter(fontSize: 12.5),
-                                    ),
-                                  ),
-
-                                  // Selling Price
-                                  DataCell(
-                                    Text(
-                                      Formatters.number(p.price, decimalPlaces: 2),
-                                      style: GoogleFonts.inter(fontSize: 12.5, fontWeight: FontWeight.w700, color: textPrimary),
-                                    ),
-                                  ),
-
-                                  // Multi-Mode indicator
-                                  DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (p.allowLoose)
-                                          Tooltip(
-                                            message: 'Loose / Decimal sale enabled',
-                                            child: Container(
-                                              margin: const EdgeInsets.only(right: 4),
-                                              padding: const EdgeInsets.all(4),
-                                              decoration: BoxDecoration(
-                                                color: Colors.cyan.withValues(alpha: 0.15),
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(Icons.scale_rounded, size: 12, color: Colors.cyan),
-                                            ),
-                                          ),
-                                        if (p.allowPack)
-                                          Tooltip(
-                                            message: 'Pack sale enabled: ${p.packSize}${p.packSizeUnit}',
-                                            child: Container(
-                                              padding: const EdgeInsets.all(4),
-                                              decoration: BoxDecoration(
-                                                color: Colors.indigo.withValues(alpha: 0.15),
-                                                shape: BoxShape.circle,
-                                              ),
-                                              child: const Icon(Icons.inventory_2_rounded, size: 12, color: Colors.indigo),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // Stock Quantity
-                                  DataCell(
-                                    Text(
-                                      '${p.stock == p.stock.roundToDouble() ? p.stock.toInt() : p.stock} ${p.unit}',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: isOut ? AppTheme.errorRed : textPrimary,
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Status Badge
-                                  DataCell(
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: badgeBg,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        badgeLabel,
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: badgeFg,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Actions
-                                  DataCell(
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.add_box_outlined, size: 18),
-                                          color: AppTheme.primaryGreen,
-                                          tooltip: posL10n.restock,
-                                          onPressed: () => _openRestock(p),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.edit_outlined, size: 18),
-                                          color: AppTheme.primaryBlue,
-                                          tooltip: posL10n.edit,
-                                          onPressed: () => _openAddProduct(p),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.layers_outlined, size: 18),
-                                          color: Colors.purple,
-                                          tooltip: posL10n.batches,
-                                          onPressed: () => Navigator.push(
-                                            context,
-                                            MaterialPageRoute(builder: (_) => BatchListScreen(product: p)),
-                                          ),
-                                        ),
-                                        if (p.id != null)
-                                          IconButton(
-                                            icon: const Icon(Icons.history_rounded, size: 18),
-                                            color: Colors.teal,
-                                            tooltip: 'Stock History',
-                                            onPressed: () => Navigator.push(
-                                              context,
-                                              MaterialPageRoute(builder: (_) => StockHistoryScreen(productId: p.id!, productName: p.name)),
-                                            ),
-                                          ),
-                                        IconButton(
-                                          icon: const Icon(Icons.archive_outlined, size: 18),
-                                          color: AppTheme.errorRed,
-                                          tooltip: 'Archive Product',
-                                          onPressed: () => _deleteProduct(p),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }).toList(),
-                          ),
+                      : ExcelInventoryTable(
+                          products: pageItems,
+                          selectedProductIds: _selectedProductIds,
+                          onSelectionChanged: (set) =>
+                              setState(() => _selectedProductIds..clear()..addAll(set)),
+                          sortColumn: _sortColumn,
+                          sortAscending: _sortAscending,
+                          onSort: (col, asc) => setState(() {
+                            _sortColumn = col;
+                            _sortAscending = asc;
+                          }),
+                          onRefresh: () => ref.invalidate(productsProvider),
                         ),
                 ),
+
+                // ── Pagination & Summary Footer ──
+                if (displayed.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: border),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Showing ${startIndex + 1}–$endIndex of $totalFiltered products',
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const Spacer(),
+
+                        // Page size selector
+                        Text(
+                          'Rows per page:',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: textSecondary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        DropdownButton<int>(
+                          value: _pageSize,
+                          isDense: true,
+                          underline: const SizedBox.shrink(),
+                          items: const [
+                            DropdownMenuItem(value: 25, child: Text('25')),
+                            DropdownMenuItem(value: 50, child: Text('50')),
+                            DropdownMenuItem(value: 100, child: Text('100')),
+                            DropdownMenuItem(value: -1, child: Text('All')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                _pageSize = val;
+                                _currentPage = 1;
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(width: 20),
+
+                        // Page Navigation buttons
+                        IconButton(
+                          icon: const Icon(Icons.first_page_rounded, size: 18),
+                          onPressed: clampedPage > 1
+                              ? () => setState(() => _currentPage = 1)
+                              : null,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.chevron_left_rounded, size: 20),
+                          onPressed: clampedPage > 1
+                              ? () => setState(() => _currentPage = clampedPage - 1)
+                              : null,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            'Page $clampedPage of $totalPages',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: textPrimary,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.chevron_right_rounded, size: 20),
+                          onPressed: clampedPage < totalPages
+                              ? () => setState(() => _currentPage = clampedPage + 1)
+                              : null,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.last_page_rounded, size: 18),
+                          onPressed: clampedPage < totalPages
+                              ? () => setState(() => _currentPage = totalPages)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           );
@@ -652,11 +872,29 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color, letterSpacing: 0.6)),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: color,
+              letterSpacing: 0.6,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text(value, style: GoogleFonts.plusJakartaSans(fontSize: 20, fontWeight: FontWeight.w800, color: textPrimary)),
+          Text(
+            value,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: textPrimary,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(subtitle, style: TextStyle(fontSize: 11, color: textSecondary)),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 11, color: textSecondary),
+          ),
         ],
       ),
     );

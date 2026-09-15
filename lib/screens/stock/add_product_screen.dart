@@ -25,11 +25,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import '../../services/local_media_storage_service.dart';
-import '../../models/supplier.dart';
 import '../../providers/supplier_provider.dart';
 import '../../services/sinhala_search_service.dart';
 import '../../services/sinhala_transliteration_service.dart';
 import '../../widgets/sinhala_transliteration_input.dart';
+import '../../utils/category_search_util.dart';
 
 class AddProductScreen extends ConsumerStatefulWidget {
   final Product? product;
@@ -74,6 +74,10 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
   YoloWorldDetection? _detectedResult;
   final _categorySearchController = TextEditingController();
   bool _showAdvancedBilingual = false;
+
+  // Tax & VAT Classification — defaults to 'exempt': user must explicitly opt a product in to VAT
+  String _taxStatus = 'exempt';
+  final _customTaxRateController = TextEditingController();
  
   @override
   void initState() {
@@ -110,6 +114,10 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
       _trackBatches = widget.product!.trackBatches;
       _selectedSupplierId = widget.product!.supplierId;
       _imagePath = widget.product!.imageUrl;
+      _taxStatus = widget.product!.taxStatus ?? 'exempt';
+      if (widget.product!.customTaxRate != null) {
+        _customTaxRateController.text = widget.product!.customTaxRate.toString();
+      }
       if (_nameSinhalaController.text.isNotEmpty || _nameEnglishController.text.isNotEmpty || _searchAliasesController.text.isNotEmpty) {
         _showAdvancedBilingual = true;
       }
@@ -142,6 +150,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
     _stockController.dispose();
     _minStockController.dispose();
     _categorySearchController.dispose();
+    _customTaxRateController.dispose();
     super.dispose();
   }
 
@@ -258,6 +267,7 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
       final parsedCost = _costPriceController.text.trim().isEmpty ? null : double.tryParse(_costPriceController.text.trim());
       final parsedStock = _trackBatches ? 0.0 : (double.tryParse(_stockController.text.trim()) ?? 0.0);
       final parsedMinStock = double.tryParse(_minStockController.text.trim()) ?? 10.0;
+      final parsedCustomTax = _customTaxRateController.text.trim().isEmpty ? null : double.tryParse(_customTaxRateController.text.trim());
 
       if (widget.product != null) {
         // Update existing product
@@ -285,6 +295,8 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           packSize: double.tryParse(_packSizeController.text.trim()) ?? 1.0,
           packUnit: _packUnit,
           packSizeUnit: _packSizeUnit,
+          taxStatus: _taxStatus,
+          customTaxRate: parsedCustomTax,
         );
         await ref.read(productActionsProvider).updateProduct(updatedProduct);
       } else {
@@ -313,6 +325,8 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
           packSize: double.tryParse(_packSizeController.text.trim()) ?? 1.0,
           packUnit: _packUnit,
           packSizeUnit: _packSizeUnit,
+          taxStatus: _taxStatus,
+          customTaxRate: parsedCustomTax,
         );
         await ref.read(productActionsProvider).addProduct(product);
       }
@@ -1084,6 +1098,140 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
  
                   const SizedBox(height: 20),
 
+                  // Tax & VAT Configuration
+                  AppCard(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.receipt_long_rounded, color: Color(0xFF6366F1), size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Tax & VAT Classification',
+                                  style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w800),
+                                ),
+                                Text(
+                                  'Specify tax treatment according to Inland Revenue Department (IRD)',
+                                  style: GoogleFonts.inter(fontSize: 11, color: context.subText),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Tax Status Dropdown
+                        DropdownButtonFormField<String>(
+                          value: _taxStatus,
+                          decoration: InputDecoration(
+                            labelText: 'Tax Treatment',
+                            prefixIcon: const Icon(Icons.account_balance_wallet_outlined, size: 20),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'taxable',
+                              child: Text('Taxable (Standard Rate / VAT)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'zero_rated',
+                              child: Text('Zero-Rated (0% VAT)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'exempt',
+                              child: Text('Exempt (Essential Goods / No VAT)'),
+                            ),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                _taxStatus = val;
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 14),
+
+                        if (_taxStatus == 'taxable') ...[
+                          TextFormField(
+                            controller: _customTaxRateController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.w600),
+                            decoration: InputDecoration(
+                              labelText: 'Custom Tax Rate % (Leave blank for store default)',
+                              hintText: 'e.g. 18.0',
+                              suffixText: '%',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'If left blank, the store\'s default VAT rate from Settings will be applied.',
+                            style: GoogleFonts.inter(fontSize: 11, color: context.subText),
+                          ),
+                        ] else if (_taxStatus == 'zero_rated') ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.info_outline, color: Colors.blue, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Zero-rated supplies are taxed at 0% and reported under Zero-Rated turnover.',
+                                    style: GoogleFonts.inter(fontSize: 12, color: Colors.blue[800]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (_taxStatus == 'exempt') ...[
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.shield_outlined, color: Colors.amber, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Exempt items (e.g. unprocessed agricultural food, milk, medicines) are free of VAT.',
+                                    style: GoogleFonts.inter(fontSize: 12, color: Colors.amber[900]),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
                   // Supplier Selection
                   AppCard(
                     padding: const EdgeInsets.all(16),
@@ -1269,28 +1417,44 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                         ),
                         const SizedBox(height: 12),
 
-                        // Search box for categories
+                        // Search box for categories with Singlish / Sinhala / English support
                         TextFormField(
                           controller: _categorySearchController,
                           decoration: InputDecoration(
-                            hintText: 'Search categories...',
+                            hintText: 'Search categories (Singlish / සිංහල / English)...',
                             prefixIcon: const Icon(Icons.search, size: 20),
-                            suffixIcon: _categorySearchController.text.isNotEmpty
-                                ? IconButton(
+                            suffixIcon: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SinhalaConvertSuffix(
+                                  controller: _categorySearchController,
+                                  onConverted: () {
+                                    setState(() {});
+                                  },
+                                ),
+                                if (_categorySearchController.text.isNotEmpty)
+                                  IconButton(
                                     icon: const Icon(Icons.clear, size: 18),
                                     onPressed: () {
                                       setState(() {
                                         _categorySearchController.clear();
                                       });
                                     },
-                                  )
-                                : null,
+                                  ),
+                              ],
+                            ),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           onChanged: (val) {
+                            setState(() {});
+                          },
+                        ),
+                        SinhalaSuggestionBanner(
+                          controller: _categorySearchController,
+                          onApplied: () {
                             setState(() {});
                           },
                         ),
@@ -1309,26 +1473,41 @@ class _AddProductScreenState extends ConsumerState<AddProductScreen> {
                           const SizedBox(height: 8),
                           Builder(
                             builder: (context) {
-                              final query = _categorySearchController.text.trim().toLowerCase();
-                              final matchingMain = CategoryConstants.mainCategories
-                                  .where((cat) => cat.toLowerCase().contains(query) ||
-                                                  context.getLocalizedCategory(cat).toLowerCase().contains(query))
-                                  .toList();
-                              final matchingSub = CategoryConstants.allSubcategories
-                                  .where((sub) => sub.toLowerCase().contains(query) ||
-                                                  context.getLocalizedCategory(sub).toLowerCase().contains(query))
-                                  .toList();
+                              final query = _categorySearchController.text.trim();
+                              final matchingMain = CategorySearchUtil.filterMainCategories(query, context: context);
+                              final matchingSub = CategorySearchUtil.filterSubcategories(query, context: context);
 
                               if (matchingMain.isEmpty && matchingSub.isEmpty) {
                                 return Padding(
                                   padding: const EdgeInsets.all(16),
                                   child: Center(
-                                    child: Text(
-                                      'No categories found.',
-                                      style: GoogleFonts.plusJakartaSans(
-                                        color: context.subText,
-                                        fontSize: 12,
-                                      ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.search_off_rounded,
+                                          size: 32,
+                                          color: context.subText.withValues(alpha: 0.5),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'No categories found for "$query".',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            color: context.subText,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'Try searching in Singlish (e.g. kiri, parippu, mas, seeni, pan), Sinhala, or English.',
+                                          style: GoogleFonts.plusJakartaSans(
+                                            color: context.subText.withValues(alpha: 0.7),
+                                            fontSize: 11,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 );

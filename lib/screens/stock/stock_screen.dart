@@ -20,12 +20,15 @@ import '../../providers/forecasting_provider.dart';
 import 'archived_products_screen.dart';
 import 'product_analysis_screen.dart';
 import 'product_price_manager_screen.dart';
+import '../desktop/desktop_inventory_view.dart';
 import '../../utils/category_icon_util.dart';
 import '../../utils/category_constants.dart';
 import '../../widgets/cached_product_image.dart';
 import '../../widgets/sinhala_transliteration_input.dart';
 import '../../services/sinhala_search_service.dart';
 import '../../widgets/add_stock_dialog.dart';
+import '../../providers/expiry_provider.dart';
+import '../inventory/expiry_management_screen.dart';
 
 class StockScreen extends ConsumerStatefulWidget {
   const StockScreen({super.key});
@@ -308,6 +311,8 @@ class _StockScreenState extends ConsumerState<StockScreen> {
   Widget build(BuildContext context) {
     final productsAsync = ref.watch(productsProvider);
     final lowStockAsync = ref.watch(lowStockProductsProvider);
+    final expirySummary = ref.watch(expirySummaryProvider);
+    final totalExpiryAlerts = expirySummary.totalExpiredProducts + expirySummary.expiringSoonProducts;
 
     return Scaffold(
       appBar: AppBar(
@@ -316,6 +321,56 @@ class _StockScreenState extends ConsumerState<StockScreen> {
           style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            icon: Badge(
+              isLabelVisible: totalExpiryAlerts > 0,
+              backgroundColor: expirySummary.totalExpiredProducts > 0
+                  ? AppTheme.errorRed
+                  : const Color(0xFFF59E0B),
+              label: Text(
+                '$totalExpiryAlerts',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              child: Icon(
+                Icons.event_busy_rounded,
+                color: totalExpiryAlerts > 0
+                    ? (expirySummary.totalExpiredProducts > 0
+                        ? AppTheme.errorRed
+                        : const Color(0xFFF59E0B))
+                    : null,
+              ),
+            ),
+            tooltip: 'Expiry Management & Alerts',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ExpiryManagementScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.table_chart_rounded),
+            tooltip: 'Excel Inventory Table',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => Scaffold(
+                    appBar: AppBar(
+                      title: const Text('Excel Inventory Table'),
+                    ),
+                    body: const DesktopInventoryView(),
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.price_change_outlined),
             tooltip: 'Price & Unit Manager',

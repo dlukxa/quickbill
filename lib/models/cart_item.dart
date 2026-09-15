@@ -54,6 +54,21 @@ class CartItem {
     if (itemType == 'service') return serviceObj!.name;
     return product!.name;
   }
+
+  // Product tax status ('taxable', 'zero_rated', 'exempt').
+  // Defaults to 'exempt' — products must be explicitly marked 'taxable' to attract VAT.
+  String get taxStatus => product?.taxStatus ?? 'exempt';
+
+  // Custom tax rate override
+  double? get customTaxRate => product?.customTaxRate;
+
+  // Effective tax rate considering global VAT toggle and store default rate
+  double getEffectiveTaxRate(double defaultRate, bool isVatEnabled) {
+    if (!isVatEnabled || taxStatus == 'exempt' || taxStatus == 'zero_rated') {
+      return 0.0;
+    }
+    return customTaxRate ?? defaultRate;
+  }
   
   // Base unit of the product
   String get productBaseUnit {
@@ -218,5 +233,22 @@ class CartItem {
       batchStock: batchStock ?? this.batchStock,
       discount: discount ?? this.discount,
     );
+  }
+
+  /// Whether this line item is bound to an expired product or batch.
+  bool get isExpired {
+    if (batchId != null && product?.batches != null) {
+      final matchingBatch = product!.batches!.where((b) => b.id == batchId).firstOrNull;
+      if (matchingBatch != null && matchingBatch.isExpired) {
+        return true;
+      }
+    }
+    if (product?.expiryDate != null) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final exp = DateTime(product!.expiryDate!.year, product!.expiryDate!.month, product!.expiryDate!.day);
+      return exp.isBefore(today);
+    }
+    return false;
   }
 }

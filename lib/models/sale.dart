@@ -7,6 +7,15 @@ class Sale {
   final double discount;
   final double tax;
   final double serviceCharge; // NEW
+  final double taxableAmount;
+  final double taxExemptAmount;
+  final double taxZeroRatedAmount;
+  final bool isVatEnabled;
+  final double vatRate;
+  final String pricingType; // 'inclusive' or 'exclusive'
+  final String invoiceType; // 'normal' or 'tax_invoice'
+  final String? customerTin;
+  final String? customerVatNumber;
   final int itemsCount;
   final String paymentMethod;
   final int? customerId;
@@ -30,6 +39,15 @@ class Sale {
     this.discount = 0,
     this.tax = 0,
     this.serviceCharge = 0,
+    this.taxableAmount = 0.0,
+    this.taxExemptAmount = 0.0,
+    this.taxZeroRatedAmount = 0.0,
+    this.isVatEnabled = false,
+    this.vatRate = 0.0,
+    this.pricingType = 'inclusive',
+    this.invoiceType = 'normal',
+    this.customerTin,
+    this.customerVatNumber,
     required this.itemsCount,
     this.paymentMethod = 'cash',
     this.customerId,
@@ -58,6 +76,15 @@ class Sale {
       'discount': discount,
       'tax': tax,
       'service_charge': serviceCharge,
+      'taxable_amount': taxableAmount,
+      'tax_exempt_amount': taxExemptAmount,
+      'tax_zero_rated_amount': taxZeroRatedAmount,
+      'is_vat_enabled': isVatEnabled ? 1 : 0,
+      'vat_rate': vatRate,
+      'pricing_type': pricingType,
+      'invoice_type': invoiceType,
+      'customer_tin': customerTin,
+      'customer_vat_number': customerVatNumber,
       'items_count': itemsCount,
       'payment_method': paymentMethod,
       'customer_id': customerId,
@@ -83,6 +110,15 @@ class Sale {
       discount: (map['discount'] as num?)?.toDouble() ?? 0.0,
       tax: (map['tax'] as num?)?.toDouble() ?? 0.0,
       serviceCharge: (map['service_charge'] as num?)?.toDouble() ?? 0.0,
+      taxableAmount: (map['taxable_amount'] as num?)?.toDouble() ?? 0.0,
+      taxExemptAmount: (map['tax_exempt_amount'] as num?)?.toDouble() ?? 0.0,
+      taxZeroRatedAmount: (map['tax_zero_rated_amount'] as num?)?.toDouble() ?? 0.0,
+      isVatEnabled: (map['is_vat_enabled'] as int? ?? 0) == 1,
+      vatRate: (map['vat_rate'] as num?)?.toDouble() ?? 0.0,
+      pricingType: map['pricing_type'] as String? ?? 'inclusive',
+      invoiceType: map['invoice_type'] as String? ?? 'normal',
+      customerTin: map['customer_tin'] as String?,
+      customerVatNumber: map['customer_vat_number'] as String?,
       itemsCount: map['items_count'] as int? ?? 0,
       paymentMethod: map['payment_method'] as String? ?? 'cash',
       customerId: map['customer_id'] as int?,
@@ -116,6 +152,15 @@ class Sale {
     double? discount,
     double? tax,
     double? serviceCharge,
+    double? taxableAmount,
+    double? taxExemptAmount,
+    double? taxZeroRatedAmount,
+    bool? isVatEnabled,
+    double? vatRate,
+    String? pricingType,
+    String? invoiceType,
+    String? customerTin,
+    String? customerVatNumber,
     int? itemsCount,
     String? paymentMethod,
     int? customerId,
@@ -138,6 +183,15 @@ class Sale {
       discount: discount ?? this.discount,
       tax: tax ?? this.tax,
       serviceCharge: serviceCharge ?? this.serviceCharge,
+      taxableAmount: taxableAmount ?? this.taxableAmount,
+      taxExemptAmount: taxExemptAmount ?? this.taxExemptAmount,
+      taxZeroRatedAmount: taxZeroRatedAmount ?? this.taxZeroRatedAmount,
+      isVatEnabled: isVatEnabled ?? this.isVatEnabled,
+      vatRate: vatRate ?? this.vatRate,
+      pricingType: pricingType ?? this.pricingType,
+      invoiceType: invoiceType ?? this.invoiceType,
+      customerTin: customerTin ?? this.customerTin,
+      customerVatNumber: customerVatNumber ?? this.customerVatNumber,
       itemsCount: itemsCount ?? this.itemsCount,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       customerId: customerId ?? this.customerId,

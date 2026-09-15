@@ -41,8 +41,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
   Timer? _countdownTimer;
   late AnimationController _pulseController;
 
-  // Tab & Code Input State
-  int _selectedTab = 0; // 0: QR Scan, 1: Enter Code / Sign In
+  // Code Input State (for manual/test dialog)
   final _codeController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -50,6 +49,23 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
   String? _actionError;
   bool _showPassword = false;
   bool _isOwnerLoginExpanded = false;
+  StateSetter? _dialogSetState;
+
+  void _safeSetState(VoidCallback fn) {
+    if (mounted) {
+      setState(fn);
+    } else {
+      fn();
+    }
+    _dialogSetState?.call(() {});
+  }
+
+  void _completeLinking(String shopUid) {
+    if (mounted && Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    widget.onLinked(shopUid);
+  }
 
   @override
   void initState() {
@@ -120,7 +136,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
             _sessionSub?.cancel();
             _refreshTimer?.cancel();
             _countdownTimer?.cancel();
-            widget.onLinked(data['shopUid'] as String);
+            _completeLinking(data['shopUid'] as String);
           }
         }, onError: (err) {
           if (!mounted) return;
@@ -138,18 +154,21 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         _error = null;
       });
 
-      // Auto-refresh QR after 90 seconds
-      _refreshTimer?.cancel();
-      _refreshTimer = Timer(const Duration(seconds: 90), _createSession);
-
-      // Countdown timer for UI
-      _countdownTimer?.cancel();
-      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
+      // Start countdown timer
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
         setState(() {
-          _countdown -= 1;
-          if (_countdown <= 0) _countdown = 0;
+          _countdown = (_countdown - 1).clamp(0, 90);
         });
+      });
+
+      // Refresh every 90 seconds
+      _refreshTimer = Timer(const Duration(seconds: 90), () {
+        _sessionSub?.cancel();
+        _createSession();
       });
     } catch (e) {
       debugPrint('DesktopQrLinkScreen: error creating session: $e');
@@ -163,11 +182,11 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
   Future<void> _linkWithCode(String rawCode) async {
     final code = rawCode.trim();
     if (code.isEmpty) {
-      setState(() => _actionError = 'Please enter a shop code, staff code, or TEST');
+      _safeSetState(() => _actionError = 'Please enter a shop code, staff code, or TEST');
       return;
     }
 
-    setState(() {
+    _safeSetState(() {
       _isActionLoading = true;
       _actionError = null;
     });
@@ -176,7 +195,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
       // 1. Fast path for test/demo mode
       final upper = code.toUpperCase();
       if (upper == 'TEST' || upper == 'DEMO' || upper == 'TESTING' || code == '123456') {
-        widget.onLinked(kDefaultTestShopUid);
+        _completeLinking(kDefaultTestShopUid);
         return;
       }
 
@@ -186,7 +205,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         try {
           final credentials = await StaffLoginService.instance.validateLoginCode(code);
           if (credentials != null && credentials['owner_uid'] != null) {
-            widget.onLinked(credentials['owner_uid'] as String);
+            _completeLinking(credentials['owner_uid'] as String);
             return;
           }
         } catch (e) {
@@ -204,7 +223,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
           if (snap.docs.isNotEmpty) {
             final data = snap.docs.first.data();
             if (data['shopUid'] != null) {
-              widget.onLinked(data['shopUid'] as String);
+              _completeLinking(data['shopUid'] as String);
               return;
             }
           }
@@ -221,21 +240,20 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
               .doc(code)
               .get();
           if (userDoc.exists) {
-            widget.onLinked(code);
+            _completeLinking(code);
             return;
           }
         } catch (_) {
           // If offline or permission rules restrict direct doc get,
           // connect with the specified Shop UID directly
-          widget.onLinked(code);
+          _completeLinking(code);
           return;
         }
       }
 
       throw Exception('Code "$code" not recognized. Use "TEST" for instant testing, a 6-digit staff code, or your Shop UID.');
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
+      _safeSetState(() {
         _actionError = e.toString().replaceAll('Exception: ', '');
         _isActionLoading = false;
       });
@@ -247,17 +265,17 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
     final password = _passwordController.text;
 
     if (email.isEmpty || password.isEmpty) {
-      setState(() => _actionError = 'Please enter both email and password');
+      _safeSetState(() => _actionError = 'Please enter both email and password');
       return;
     }
 
-    setState(() {
+    _safeSetState(() {
       _isActionLoading = true;
       _actionError = null;
     });
 
     if (Firebase.apps.isEmpty) {
-      setState(() {
+      _safeSetState(() {
         _actionError = 'Direct cloud login requires online Firebase. Use One-Click Test Mode or enter shop code.';
         _isActionLoading = false;
       });
@@ -270,13 +288,12 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         password: password,
       );
       if (cred.user != null) {
-        widget.onLinked(cred.user!.uid);
+        _completeLinking(cred.user!.uid);
       } else {
         throw Exception('Authentication failed');
       }
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
+      _safeSetState(() {
         _actionError = 'Login failed: ${e.toString().replaceAll('Exception: ', '')}';
         _isActionLoading = false;
       });
@@ -367,55 +384,18 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
                       ),
                     ],
                   ),
-                  child: Column(
-                    children: [
-                      // Tab Segmented Switcher
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white12),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _buildTabButton(
-                                index: 0,
-                                icon: Icons.qr_code_rounded,
-                                label: 'Scan QR Code',
-                              ),
-                            ),
-                            Expanded(
-                              child: _buildTabButton(
-                                index: 1,
-                                icon: Icons.vpn_key_rounded,
-                                label: 'Enter Code / Test',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // TAB 0: QR Scan View
-                      if (_selectedTab == 0) _buildQrView(),
-
-                      // TAB 1: Code / Test Mode / Login View
-                      if (_selectedTab == 1) _buildCodeEntryView(),
-                    ],
-                  ),
+                  child: _buildQrView(),
                 ),
               ),
 
               const SizedBox(height: 32),
 
               // Steps Helper
-              _buildStep('1', 'Scan QR with phone OR enter code above'),
+              _buildStep('1', 'Open QuickBill on your phone and go to Settings > Link Desktop'),
               const SizedBox(height: 10),
-              _buildStep('2', 'Select cashier & enter your 4-digit PIN'),
+              _buildStep('2', 'Point your camera at this screen to scan the QR code'),
               const SizedBox(height: 10),
-              _buildStep('3', 'Ready to bill on Windows Desktop!'),
+              _buildStep('3', 'Select cashier & enter your 4-digit PIN to start billing!'),
             ],
           ),
         ),
@@ -423,49 +403,78 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
     );
   }
 
-  Widget _buildTabButton({
-    required int index,
-    required IconData icon,
-    required String label,
-  }) {
-    final isSelected = _selectedTab == index;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedTab = index;
-          _actionError = null;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryGreen : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: isSelected ? Colors.white : Colors.white60,
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? Colors.white : Colors.white60,
+  void _showManualLoginDialog() {
+    _actionError = null;
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            _dialogSetState = setDialogState;
+            return Dialog(
+              backgroundColor: const Color(0xFF1E293B),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: const BorderSide(color: Colors.white12),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480, maxHeight: 680),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.vpn_key_rounded, color: AppTheme.primaryGreen, size: 20),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Manual Link & Test Mode',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.white60),
+                            onPressed: () {
+                              _dialogSetState = null;
+                              Navigator.of(dialogCtx).pop();
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: _buildCodeEntryView(),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
+            );
+          },
+        );
+      },
+    ).then((_) {
+      _dialogSetState = null;
+    });
   }
 
   Widget _buildQrView() {
@@ -627,7 +636,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
 
         const SizedBox(height: 16),
         TextButton.icon(
-          onPressed: () => setState(() => _selectedTab = 1),
+          onPressed: _showManualLoginDialog,
           icon: const Icon(Icons.keyboard_rounded, size: 16, color: AppTheme.primaryGreen),
           label: Text(
             'No phone camera? Enter code or test mode →',
@@ -957,7 +966,9 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
           ),
         ),
         const SizedBox(width: 10),
-        Text(text, style: GoogleFonts.inter(fontSize: 13, color: Colors.white60)),
+        Flexible(
+          child: Text(text, style: GoogleFonts.inter(fontSize: 13, color: Colors.white60)),
+        ),
       ],
     );
   }

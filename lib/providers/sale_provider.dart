@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/sale.dart';
 import '../models/cart_item.dart';
@@ -60,6 +61,15 @@ class SaleActions {
     double discount = 0,
     double tax = 0,
     double serviceCharge = 0,
+    double taxableAmount = 0.0,
+    double taxExemptAmount = 0.0,
+    double taxZeroRatedAmount = 0.0,
+    bool? isVatEnabled,
+    double? vatRate,
+    String? pricingType,
+    String? invoiceType,
+    String? customerTin,
+    String? customerVatNumber,
     String paymentMethod = 'cash',
     int? customerId,
     String? customerName,
@@ -70,6 +80,7 @@ class SaleActions {
     final db = ref.read(databaseServiceProvider);
     final employeeAsync = ref.read(currentEmployeeProvider);
     final employee = employeeAsync.value;
+    final settings = ref.read(settingsProvider);
 
     final branchId = ref.read(branchProvider).selectedBranch?.id ?? 1;
 
@@ -80,6 +91,15 @@ class SaleActions {
       discount: discount,
       tax: tax,
       serviceCharge: serviceCharge,
+      taxableAmount: taxableAmount,
+      taxExemptAmount: taxExemptAmount,
+      taxZeroRatedAmount: taxZeroRatedAmount,
+      isVatEnabled: isVatEnabled ?? settings.isVatEnabled,
+      vatRate: vatRate ?? settings.defaultVatRate,
+      pricingType: pricingType ?? settings.vatPricingType,
+      invoiceType: invoiceType ?? settings.vatInvoiceMode,
+      customerTin: customerTin,
+      customerVatNumber: customerVatNumber,
       itemsCount: cartItems.length,
       paymentMethod: paymentMethod,
       customerId: customerId,
@@ -117,7 +137,19 @@ class SaleActions {
     final branchId = ref.read(branchProvider).selectedBranch?.id ?? 1;
     return await db.getSalesByRange(start, end, branchId);
   }
+
+  Future<Map<String, dynamic>> getVatReport({DateTime? startDate, DateTime? endDate}) async {
+    final db = ref.read(databaseServiceProvider);
+    final branchId = ref.read(branchProvider).selectedBranch?.id ?? 1;
+    return await db.getVatReport(startDate: startDate, endDate: endDate, branchId: branchId);
+  }
 }
 
 // Sale actions provider
 final saleActionsProvider = Provider((ref) => SaleActions(ref));
+
+// VAT Report provider family for date ranges
+final vatReportProvider = FutureProvider.family<Map<String, dynamic>, DateTimeRange?>((ref, range) async {
+  final actions = ref.watch(saleActionsProvider);
+  return await actions.getVatReport(startDate: range?.start, endDate: range?.end);
+});

@@ -61,7 +61,7 @@ class ReceiptImageGenerator {
   }) async {
     final bool is58mm = overridePaperSize == '58mm' ||
         (overridePaperSize == null && settings.is58mm);
-    final double targetWidth = ReceiptTheme.getReceiptWidth(is58mm);
+    final double targetWidth = ReceiptTheme.getReceiptWidth(is58mm, settings: settings);
 
     ui.Image? logoUiImage;
     if (settings.showReceiptLogo) {

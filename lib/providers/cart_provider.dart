@@ -1,12 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'discount_provider.dart';
-import '../models/discount.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../models/service.dart';
 import '../models/product_batch.dart';
 import 'preference_provider.dart';
 import '../services/unit_conversion_service.dart';
+import '../utils/tax_calculator.dart';
 
 class CartNotifier extends StateNotifier<List<CartItem>> {
   final Ref ref;
@@ -359,12 +359,37 @@ final billDiscountProvider = Provider<double>((ref) {
   return ref.watch(autoBillDiscountProvider);
 });
 
+// Core VAT and Tax Breakdown Provider
+final cartTaxBreakdownProvider = Provider<TaxBreakdown>((ref) {
+  final cart = ref.watch(cartProvider);
+  final settings = ref.watch(settingsProvider);
+  final billDiscount = ref.watch(billDiscountProvider);
+
+  final taxInputs = cart.map((item) {
+    return TaxInputItem(
+      productId: item.product?.id,
+      name: item.itemName,
+      quantity: item.quantity,
+      unitPrice: item.itemPrice,
+      itemDiscount: item.discount,
+      taxStatus: item.taxStatus,
+      customTaxRate: item.customTaxRate,
+    );
+  }).toList();
+
+  return TaxCalculator.calculate(
+    items: taxInputs,
+    isVatEnabled: settings.isVatEnabled,
+    defaultVatRate: settings.defaultVatRate,
+    pricingType: settings.vatPricingType,
+    billDiscount: billDiscount,
+  );
+});
+
 // Total Subtotal after discount (used for Tax and Service Charge base)
 final cartDiscountedSubtotalProvider = Provider<double>((ref) {
-  final cart = ref.watch(cartProvider);
-  final subtotal = cart.fold(0.0, (sum, item) => sum + item.total);
-  final effectiveDiscount = ref.watch(billDiscountProvider);
-  return subtotal - effectiveDiscount;
+  final breakdown = ref.watch(cartTaxBreakdownProvider);
+  return (breakdown.grossSubtotal - breakdown.totalDiscount).clamp(0.0, double.infinity);
 });
 
 // Service Charge Provider
@@ -372,25 +397,22 @@ final cartServiceChargeProvider = Provider<double>((ref) {
   final settings = ref.watch(settingsProvider);
   if (settings.serviceChargeRate <= 0) return 0.0;
   
-  final baseAmount = ref.watch(cartDiscountedSubtotalProvider);
-  return baseAmount * (settings.serviceChargeRate / 100);
+  final breakdown = ref.watch(cartTaxBreakdownProvider);
+  final baseAmount = (breakdown.grossSubtotal - breakdown.totalDiscount).clamp(0.0, double.infinity);
+  return TaxCalculator.round2(baseAmount * (settings.serviceChargeRate / 100));
 });
 
-// Tax Provider
+// Tax Provider (Returns output VAT amount)
 final cartTaxProvider = Provider<double>((ref) {
-  final settings = ref.watch(settingsProvider);
-  if (settings.taxRate <= 0) return 0.0;
-  
-  final baseAmount = ref.watch(cartDiscountedSubtotalProvider);
-  return baseAmount * (settings.taxRate / 100);
+  final breakdown = ref.watch(cartTaxBreakdownProvider);
+  return breakdown.totalVat;
 });
 
-// Total provider (computed): Discounted Subtotal + Service Charge + Tax
+// Total provider (computed): breakdown.grandTotal + serviceCharge
 final cartTotalProvider = Provider<double>((ref) {
-  final discountedSubtotal = ref.watch(cartDiscountedSubtotalProvider);
+  final breakdown = ref.watch(cartTaxBreakdownProvider);
   final serviceCharge = ref.watch(cartServiceChargeProvider);
-  final tax = ref.watch(cartTaxProvider);
-  return discountedSubtotal + serviceCharge + tax;
+  return TaxCalculator.round2(breakdown.grandTotal + serviceCharge);
 });
 
 // Item count provider (computed)

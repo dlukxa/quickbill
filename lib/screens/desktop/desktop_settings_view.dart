@@ -15,7 +15,6 @@ import '../../services/backup_service.dart';
 import '../../services/cash_drawer_service.dart';
 import '../../services/export_service.dart';
 import '../../services/local_media_storage_service.dart';
-import '../../services/pdf_service.dart';
 import '../../services/printing_service.dart';
 import '../../services/sync_service.dart';
 import '../../models/sale.dart';
@@ -24,6 +23,7 @@ import '../../utils/pos_l10n.dart';
 import '../../widgets/sinhala_transliteration_input.dart';
 import '../../widgets/receipt/receipt_preview_dialog.dart';
 import '../../widgets/store_logo_widget.dart';
+import '../settings/receipt_print_settings_screen.dart';
 
 /// Comprehensive tabbed desktop settings view
 class DesktopSettingsView extends ConsumerStatefulWidget {
@@ -47,6 +47,15 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
   late TextEditingController _serviceChargeCtrl;
   late TextEditingController _lowStockCtrl;
 
+  // Sri Lanka VAT & Tax Configuration
+  late bool _isVatEnabled;
+  late bool _isVatRegistered;
+  late TextEditingController _tinCtrl;
+  late TextEditingController _vatNumberCtrl;
+  late TextEditingController _defaultVatRateCtrl;
+  late String _vatPricingType;
+  late String _vatInvoiceMode;
+
   // Controllers for Printer
   late TextEditingController _printerIpCtrl;
   late TextEditingController _printerPortCtrl;
@@ -66,6 +75,14 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
     _taxRateCtrl = TextEditingController(text: settings.taxRate.toString());
     _serviceChargeCtrl = TextEditingController(text: settings.serviceChargeRate.toString());
     _lowStockCtrl = TextEditingController(text: settings.lowStockThreshold.toString());
+
+    _isVatEnabled = settings.isVatEnabled;
+    _isVatRegistered = settings.isVatRegistered;
+    _tinCtrl = TextEditingController(text: settings.taxIdentificationNumber);
+    _vatNumberCtrl = TextEditingController(text: settings.vatRegistrationNumber);
+    _defaultVatRateCtrl = TextEditingController(text: settings.defaultVatRate.toString());
+    _vatPricingType = settings.vatPricingType;
+    _vatInvoiceMode = settings.vatInvoiceMode;
 
     _printerIpCtrl = TextEditingController(text: settings.printerIpAddress);
     _printerPortCtrl = TextEditingController(text: settings.printerPort.toString());
@@ -102,6 +119,9 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
     _taxRateCtrl.dispose();
     _serviceChargeCtrl.dispose();
     _lowStockCtrl.dispose();
+    _tinCtrl.dispose();
+    _vatNumberCtrl.dispose();
+    _defaultVatRateCtrl.dispose();
     _printerIpCtrl.dispose();
     _printerPortCtrl.dispose();
     super.dispose();
@@ -629,7 +649,23 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                           DropdownMenuItem(value: '58mm', child: Text('58mm (Mobile Roll)', overflow: TextOverflow.ellipsis)),
                         ],
                         onChanged: (val) {
-                          if (val != null) notifier.updatePrinterPaperSize(val);
+                          if (val != null) {
+                            notifier.updatePrinterPaperSize(val);
+                            notifier.updateReceiptPaper(widthMm: val == '58mm' ? 58.0 : 80.0, isCustom: false);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.tune_rounded, size: 16),
+                        label: const Text('Margins, Fonts & Live Preview', style: TextStyle(fontSize: 12)),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ReceiptPrintSettingsScreen(),
+                            ),
+                          );
                         },
                       ),
                     ],
@@ -858,17 +894,57 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
           _buildTabHeader('Printers & POS Hardware', 'Thermal receipt printer (58mm/80mm), cash drawer & auto-print'),
           const SizedBox(height: 24),
           _buildCard(cardBg, borderColor, [
-            Text('Thermal Paper Width', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Thermal Paper Width & Receipt Margins', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 15)),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Supports 80mm, 58mm & custom roll widths with mm margins, font scaling, and zero A4 paper waste',
+                        style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton.icon(
+                  icon: const Icon(Icons.tune_rounded, size: 16),
+                  label: const Text('Print Settings & Live Roll Preview'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.primaryGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ReceiptPrintSettingsScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Row(
               children: [
-                _buildPaperSizeOption('80mm (Standard POS)', '80mm', settings.printerPaperSize == '80mm', () {
+                _buildPaperSizeOption('80mm (Standard POS)', '80mm', settings.printerPaperSize == '80mm' && !settings.isCustomPaperWidth, () {
                   notifier.updatePrinterPaperSize('80mm');
+                  notifier.updateReceiptPaper(widthMm: 80.0, isCustom: false);
                 }),
                 const SizedBox(width: 16),
-                _buildPaperSizeOption('58mm (Compact Mobile)', '58mm', settings.printerPaperSize == '58mm', () {
+                _buildPaperSizeOption('58mm (Compact Mobile)', '58mm', settings.printerPaperSize == '58mm' && !settings.isCustomPaperWidth, () {
                   notifier.updatePrinterPaperSize('58mm');
+                  notifier.updateReceiptPaper(widthMm: 58.0, isCustom: false);
                 }),
+                if (settings.isCustomPaperWidth) ...[
+                  const SizedBox(width: 16),
+                  _buildPaperSizeOption('Custom (${settings.effectivePaperWidthMm.toInt()}mm)', 'custom', true, () {}),
+                ],
               ],
             ),
             const SizedBox(height: 24),
@@ -1105,61 +1181,283 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTabHeader('Tax, Service Charges & Inventory Limits', 'Default VAT/tax percentages, service charges and low stock triggers'),
+          _buildTabHeader(
+            'Sri Lanka VAT & Tax Configuration',
+            'Configure VAT registration, TIN, 18% standard rate, pricing models (inclusive/exclusive), and invoice modes',
+          ),
           const SizedBox(height: 24),
+
+          // ─── CARD 1: SRI LANKA VAT SYSTEM ───
           _buildCard(cardBg, borderColor, [
-            TextField(
-              controller: _taxRateCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Default Tax / VAT Rate (%)',
-                hintText: 'e.g. 15.0 (Enter 0 if prices are tax-inclusive or tax exempt)',
-                border: OutlineInputBorder(),
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.account_balance_rounded, color: AppTheme.primaryGreen, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Value Added Tax (VAT) System',
+                      style: GoogleFonts.plusJakartaSans(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      'Compliant with Sri Lanka Inland Revenue Department (IRD) specifications',
+                      style: TextStyle(fontSize: 12, color: isDark ? Colors.white60 : Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+
+            // VAT Enabled Toggle
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              activeColor: AppTheme.primaryGreen,
+              title: const Text('Enable VAT / Tax System', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              subtitle: const Text('Calculate and record VAT across product inventory, POS register, and receipts', style: TextStyle(fontSize: 12)),
+              value: _isVatEnabled,
+              onChanged: (val) => setState(() => _isVatEnabled = val),
+            ),
+            const SizedBox(height: 8),
+
+            // VAT Registered Toggle
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              activeColor: AppTheme.primaryGreen,
+              title: const Text('VAT Registered Business', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              subtitle: const Text('Turn ON if business has an official VAT Registration Number from IRD', style: TextStyle(fontSize: 12)),
+              value: _isVatRegistered,
+              onChanged: (val) => setState(() => _isVatRegistered = val),
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _serviceChargeCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Default Service Charge Rate (%)',
-                hintText: 'e.g. 10.0 (Commonly used for dine-in / salon services)',
-                border: OutlineInputBorder(),
+
+            // Tax Numbers Row
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _tinCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Taxpayer Identification Number (TIN)',
+                      hintText: 'e.g. 102345678',
+                      prefixIcon: Icon(Icons.badge_outlined, size: 20),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextField(
+                    controller: _vatNumberCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'VAT Registration Number',
+                      hintText: 'e.g. 102345678-7000',
+                      prefixIcon: Icon(Icons.receipt_long_outlined, size: 20),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Default VAT Rate & Quick Selection Chips
+            Text('Default VAT Rate (%)', style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : const Color(0xFF334155))),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                SizedBox(
+                  width: 180,
+                  child: TextField(
+                    controller: _defaultVatRateCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      hintText: '18.0',
+                      suffixText: '%',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (val) {
+                      _taxRateCtrl.text = val;
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ActionChip(
+                      avatar: const Icon(Icons.flash_on_rounded, size: 14, color: AppTheme.primaryGreen),
+                      label: const Text('18% (Standard Rate)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      onPressed: () {
+                        setState(() {
+                          _defaultVatRateCtrl.text = '18.0';
+                          _taxRateCtrl.text = '18.0';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('0% (Zero-Rated)', style: TextStyle(fontSize: 12)),
+                      onPressed: () {
+                        setState(() {
+                          _defaultVatRateCtrl.text = '0.0';
+                          _taxRateCtrl.text = '0.0';
+                        });
+                      },
+                    ),
+                    ActionChip(
+                      label: const Text('8% (Simplified)', style: TextStyle(fontSize: 12)),
+                      onPressed: () {
+                        setState(() {
+                          _defaultVatRateCtrl.text = '8.0';
+                          _taxRateCtrl.text = '8.0';
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Pricing Model (Inclusive vs Exclusive)
+            Text('Pricing Architecture', style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : const Color(0xFF334155))),
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                children: [
+                  RadioListTile<String>(
+                    activeColor: AppTheme.primaryGreen,
+                    title: const Text('VAT-Inclusive Pricing (Recommended for Retail & Supermarkets)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    subtitle: const Text('Catalog and shelf prices already include VAT. Tax is backed out cleanly without price inflation at checkout.', style: TextStyle(fontSize: 12)),
+                    value: 'inclusive',
+                    groupValue: _vatPricingType,
+                    onChanged: (val) => setState(() => _vatPricingType = val ?? 'inclusive'),
+                  ),
+                  const Divider(height: 1),
+                  RadioListTile<String>(
+                    activeColor: AppTheme.primaryGreen,
+                    title: const Text('VAT-Exclusive Pricing (Common for B2B & Wholesale)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    subtitle: const Text('Shelf prices are net of tax. VAT is added on top at the register.', style: TextStyle(fontSize: 12)),
+                    value: 'exclusive',
+                    groupValue: _vatPricingType,
+                    onChanged: (val) => setState(() => _vatPricingType = val ?? 'exclusive'),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _lowStockCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Low Stock Alert Threshold',
-                hintText: 'e.g. 10 units',
-                border: OutlineInputBorder(),
+            const SizedBox(height: 20),
+
+            // Default Invoice Printing Mode
+            Text('Default Receipt / Invoice Mode', style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : const Color(0xFF334155))),
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderColor),
               ),
+              child: Column(
+                children: [
+                  RadioListTile<String>(
+                    activeColor: AppTheme.primaryGreen,
+                    title: const Text('Normal POS Receipt', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    subtitle: const Text('Standard retail slip without mandatory tax invoice headers.', style: TextStyle(fontSize: 12)),
+                    value: 'normal',
+                    groupValue: _vatInvoiceMode,
+                    onChanged: (val) => setState(() => _vatInvoiceMode = val ?? 'normal'),
+                  ),
+                  const Divider(height: 1),
+                  RadioListTile<String>(
+                    activeColor: AppTheme.primaryGreen,
+                    title: const Text('Official VAT / Tax Invoice (IRD Compliant)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    subtitle: const Text('Prints "TAX INVOICE", Business TIN, VAT Reg No, Customer TIN, and itemized VAT breakdown.', style: TextStyle(fontSize: 12)),
+                    value: 'tax_invoice',
+                    groupValue: _vatInvoiceMode,
+                    onChanged: (val) => setState(() => _vatInvoiceMode = val ?? 'tax_invoice'),
+                  ),
+                ],
+              ),
+            ),
+          ]),
+
+          const SizedBox(height: 24),
+
+          // ─── CARD 2: SERVICE CHARGE & INVENTORY LIMITS ───
+          _buildCard(cardBg, borderColor, [
+            Text('Service Charges & Stock Triggers', style: GoogleFonts.plusJakartaSans(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _serviceChargeCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Default Service Charge Rate (%)',
+                      hintText: '10.0',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextField(
+                    controller: _lowStockCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Low Stock Alert Threshold',
+                      hintText: '10',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () async {
                 final notifier = ref.read(settingsProvider.notifier);
-                final tax = double.tryParse(_taxRateCtrl.text.trim()) ?? 0.0;
+                final defaultVat = double.tryParse(_defaultVatRateCtrl.text.trim()) ?? 18.0;
                 final sc = double.tryParse(_serviceChargeCtrl.text.trim()) ?? 0.0;
                 final threshold = int.tryParse(_lowStockCtrl.text.trim()) ?? 10;
 
-                await notifier.updateTaxRate(tax);
+                await notifier.updateVatSettings(
+                  isVatEnabled: _isVatEnabled,
+                  isVatRegistered: _isVatRegistered,
+                  taxIdentificationNumber: _tinCtrl.text.trim(),
+                  vatRegistrationNumber: _vatNumberCtrl.text.trim(),
+                  defaultVatRate: defaultVat,
+                  vatPricingType: _vatPricingType,
+                  vatInvoiceMode: _vatInvoiceMode,
+                );
+                await notifier.updateTaxRate(defaultVat);
                 await notifier.updateServiceChargeRate(sc);
                 await notifier.updateLowStockThreshold(threshold);
 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Tax and inventory settings updated!')),
+                    const SnackBar(content: Text('Tax and VAT configuration updated successfully!')),
                   );
                 }
               },
               icon: const Icon(Icons.check_rounded, color: Colors.white),
-              label: const Text('Save Tax Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              label: const Text('Save Tax / VAT Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryGreen,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 15),
               ),
             ),
           ]),

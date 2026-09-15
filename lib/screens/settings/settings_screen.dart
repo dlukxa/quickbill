@@ -26,7 +26,6 @@ import 'dart:io';
 import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 import 'package:printing/printing.dart';
 import '../../services/cash_drawer_service.dart';
-import '../../services/pdf_service.dart';
 import '../../models/sale.dart';
 import '../../widgets/receipt/receipt_preview_dialog.dart';
 import '../../models/sale_item.dart';
@@ -38,6 +37,7 @@ import 'branch_management_screen.dart';
 import '../../utils/region_utils.dart';
 import '../../utils/category_constants.dart';
 import '../../widgets/app_card.dart';
+import 'receipt_print_settings_screen.dart';
 import '../../widgets/animate_in.dart';
 import '../../widgets/cloud_backups_sheet.dart';
 import '../desktop/link_to_pc_screen.dart';
@@ -675,6 +675,107 @@ class _ShopSettingsPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
+          if (currentEmployee?.role == EmployeeRole.owner) ...[
+            _SectionHeader(title: 'Sri Lanka VAT & Tax System'),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    secondary: const Icon(Icons.receipt_long_rounded),
+                    title: const Text('Enable VAT / Tax System'),
+                    subtitle: const Text('Calculate VAT on retail sales and generate tax invoices'),
+                    value: settings.isVatEnabled,
+                    onChanged: (val) {
+                      notifier.updateVatSettings(isVatEnabled: val);
+                    },
+                  ),
+                  if (settings.isVatEnabled) ...[
+                    const Divider(height: 1),
+                    SwitchListTile(
+                      secondary: const Icon(Icons.verified_outlined),
+                      title: const Text('VAT Registered Business'),
+                      subtitle: const Text('Registered with Sri Lanka Inland Revenue Department (IRD)'),
+                      value: settings.isVatRegistered,
+                      onChanged: (val) {
+                        notifier.updateVatSettings(isVatRegistered: val);
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.pin_outlined),
+                      title: const Text('Tax Identification Number (TIN)'),
+                      subtitle: Text(settings.taxIdentificationNumber.isEmpty ? 'Not Set' : settings.taxIdentificationNumber),
+                      trailing: const Icon(Icons.edit, size: 20),
+                      onTap: () => _showEditDialog(
+                        context,
+                        'Tax Identification Number (TIN)',
+                        settings.taxIdentificationNumber,
+                        (val) => notifier.updateVatSettings(taxIdentificationNumber: val.trim()),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.assignment_outlined),
+                      title: const Text('VAT Registration Number'),
+                      subtitle: Text(settings.vatRegistrationNumber.isEmpty ? 'Not Set' : settings.vatRegistrationNumber),
+                      trailing: const Icon(Icons.edit, size: 20),
+                      onTap: () => _showEditDialog(
+                        context,
+                        'VAT Registration Number',
+                        settings.vatRegistrationNumber,
+                        (val) => notifier.updateVatSettings(vatRegistrationNumber: val.trim()),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.percent_rounded),
+                      title: const Text('Default VAT Rate (%)'),
+                      subtitle: Text('${settings.defaultVatRate.toStringAsFixed(1)}% (Sri Lanka standard: 18%)'),
+                      trailing: const Icon(Icons.edit, size: 20),
+                      onTap: () => _showEditDialog(
+                        context,
+                        'Default VAT Rate (%)',
+                        settings.defaultVatRate.toString(),
+                        (val) {
+                          final rate = double.tryParse(val) ?? 18.0;
+                          notifier.updateVatSettings(defaultVatRate: rate);
+                        },
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.sell_outlined),
+                      title: const Text('Pricing Display Model'),
+                      subtitle: Text(settings.vatPricingType == 'inclusive'
+                          ? 'VAT-Inclusive (Shelf price includes VAT - Recommended for Retail)'
+                          : 'VAT-Exclusive (VAT added on top at checkout - Wholesale/B2B)'),
+                      trailing: const Icon(Icons.swap_horiz_rounded),
+                      onTap: () {
+                        final next = settings.vatPricingType == 'inclusive' ? 'exclusive' : 'inclusive';
+                        notifier.updateVatSettings(vatPricingType: next);
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.print_outlined),
+                      title: const Text('Default Receipt Mode'),
+                      subtitle: Text(settings.vatInvoiceMode == 'tax_invoice'
+                          ? 'Official Tax Invoice (Includes IRD TIN/VAT & Tax Breakdown)'
+                          : 'Normal POS Receipt (Clean retail slip)'),
+                      trailing: const Icon(Icons.swap_horiz_rounded),
+                      onTap: () {
+                        final next = settings.vatInvoiceMode == 'tax_invoice' ? 'normal' : 'tax_invoice';
+                        notifier.updateVatSettings(vatInvoiceMode: next);
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
           if (currentEmployee?.role == EmployeeRole.owner) ...[
             _SectionHeader(title: 'Business Modules'),
             AppCard(
@@ -1589,10 +1690,58 @@ class _PrinterSectionState extends ConsumerState<_PrinterSection> {
                 ],
                 selected: {settings.printerPaperSize},
                 onSelectionChanged: (Set<String> newSelection) {
-                  notifier.updatePrinterPaperSize(newSelection.first);
+                  final size = newSelection.first;
+                  notifier.updatePrinterPaperSize(size);
+                  notifier.updateReceiptPaper(
+                    widthMm: size == '58mm' ? 58.0 : 80.0,
+                    isCustom: false,
+                  );
                 },
               ),
             ],
+          ),
+
+          const SizedBox(height: 12),
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ReceiptPrintSettingsScreen(),
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryGreen.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.25)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.tune_rounded, color: AppTheme.primaryGreen, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Receipt Print & Paper Settings',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        Text(
+                          'Margins, font sizes, alignments & live thermal preview',
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, size: 20, color: AppTheme.primaryGreen),
+                ],
+              ),
+            ),
           ),
 
           const SizedBox(height: 16),
@@ -2255,9 +2404,27 @@ class _ReceiptSettingsPage extends ConsumerWidget {
                       DropdownMenuItem(value: '58mm', child: Text('58mm (Compact)')),
                     ],
                     onChanged: (val) {
-                      if (val != null) notifier.updatePrinterPaperSize(val);
+                      if (val != null) {
+                        notifier.updatePrinterPaperSize(val);
+                        notifier.updateReceiptPaper(widthMm: val == '58mm' ? 58.0 : 80.0, isCustom: false);
+                      }
                     },
                   ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.tune_rounded, color: AppTheme.primaryGreen),
+                  title: const Text('Receipt Print & Margins Settings', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Margins, font sizes, alignments & live preview'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ReceiptPrintSettingsScreen(),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),

@@ -13,6 +13,9 @@ import '../reports/profit_loss_screen.dart';
 import '../reports/peak_hours_screen.dart';
 import '../reports/reports_screen.dart';
 import '../reports/employee_reports_screen.dart';
+import '../reports/vat_report_screen.dart';
+import '../../providers/expiry_provider.dart';
+import '../inventory/expiry_management_screen.dart';
 
 class DesktopDashboardView extends ConsumerWidget {
   final Function(int viewIndex)? onNavigateTo;
@@ -27,6 +30,7 @@ class DesktopDashboardView extends ConsumerWidget {
     final todayStatsAsync = ref.watch(todayStatsProvider);
     final topProductsAsync = ref.watch(topProductsProvider);
     final todaySalesAsync = ref.watch(todaySalesProvider);
+    final expirySummary = ref.watch(expirySummaryProvider);
 
     final bg = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
     final cardBg = isDark ? const Color(0xFF1E293B) : Colors.white;
@@ -42,6 +46,7 @@ class DesktopDashboardView extends ConsumerWidget {
           ref.invalidate(topProductsProvider);
           ref.invalidate(profitLossProvider);
           ref.invalidate(todaySalesProvider);
+          ref.invalidate(stockExpiryItemsProvider);
         },
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -174,7 +179,13 @@ class DesktopDashboardView extends ConsumerWidget {
                 loading: () => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
                 error: (e, _) => Center(child: Text('Error loading stats: $e')),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+
+              // ── Expiry Alert Banner (if expired or expiring items exist) ──
+              if (expirySummary.totalExpiredProducts > 0 || expirySummary.expiringSoonProducts > 0) ...[
+                _buildExpiryAlertBanner(context, expirySummary, cardBg, border, textPrimary, textSecondary),
+                const SizedBox(height: 20),
+              ],
 
               // ── 2. Middle Row: Sales Activity & Payment Distribution ──
               Row(
@@ -395,6 +406,9 @@ class DesktopDashboardView extends ConsumerWidget {
                               }, isDark),
                               _buildQuickChip(context, 'Staff Sales', Icons.badge_rounded, () {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const EmployeeReportsScreen()));
+                              }, isDark),
+                              _buildQuickChip(context, 'VAT / Tax Audit', Icons.receipt_long_rounded, () {
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => const VatReportScreen()));
                               }, isDark),
                             ],
                           ),
@@ -638,6 +652,137 @@ class DesktopDashboardView extends ConsumerWidget {
             Text(label, style: GoogleFonts.inter(fontSize: 11.5, fontWeight: FontWeight.w600)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildExpiryAlertBanner(
+    BuildContext context,
+    ExpirySummary summary,
+    Color cardBg,
+    Color border,
+    Color textPrimary,
+    Color textSecondary,
+  ) {
+    final hasExpired = summary.totalExpiredProducts > 0;
+    final primaryAlertColor = hasExpired ? AppTheme.errorRed : const Color(0xFFF59E0B);
+    final bannerBg = hasExpired
+        ? AppTheme.errorRed.withValues(alpha: 0.08)
+        : const Color(0xFFF59E0B).withValues(alpha: 0.08);
+    final bannerBorder = hasExpired
+        ? AppTheme.errorRed.withValues(alpha: 0.3)
+        : const Color(0xFFF59E0B).withValues(alpha: 0.3);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: bannerBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: bannerBorder, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: primaryAlertColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              hasExpired ? Icons.warning_rounded : Icons.schedule_rounded,
+              color: primaryAlertColor,
+              size: 26,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      hasExpired ? 'Expired Stock Alert' : 'Upcoming Expiry Warning',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: primaryAlertColor,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    if (hasExpired)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppTheme.errorRed,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${summary.totalExpiredProducts} Expired',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    if (summary.expiringSoonProducts > 0) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${summary.expiringSoonProducts} Expiring Soon',
+                          style: GoogleFonts.inter(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  hasExpired
+                      ? '${summary.totalExpiredProducts} product(s) (${summary.totalExpiredStockQty.toStringAsFixed(0)} units) have passed their expiry date and are automatically blocked from checkout. Write off expired stock to maintain clean inventory.'
+                      : '${summary.expiringSoonProducts} product(s) (${summary.expiringSoonStockQty.toStringAsFixed(0)} units) are approaching expiration. Review batches to plan promotions or reordering.',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+            label: Text(hasExpired ? 'Manage Expiries' : 'Review Stock'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryAlertColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ExpiryManagementScreen(
+                    initialTab: hasExpired ? ExpiryTab.expired : ExpiryTab.expiringSoon,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

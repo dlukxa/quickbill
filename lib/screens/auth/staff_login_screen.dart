@@ -29,6 +29,17 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
   bool _isScanning = true;
 
   Future<void> _handleLogin(String rawCode) async {
+    if (rawCode.contains('quickbill://link')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This QR code is for linking a PC. Please sign in on this mobile app first, then tap the QR icon at the top of the Home Screen to link.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
     final code = rawCode.trim().replaceAll(RegExp(r'[^0-9]'), '');
     if (code.length != 6) return;
 
