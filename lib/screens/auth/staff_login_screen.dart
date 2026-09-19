@@ -6,15 +6,17 @@ import '../../config/theme.dart';
 import '../../services/staff_login_service.dart';
 import '../../services/auth_service.dart';
 import '../../providers/employee_provider.dart';
-import '../../widgets/gradient_button.dart';
 import '../../widgets/animate_in.dart';
-import '../../widgets/app_card.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/database_service.dart';
 import '../../services/sync_service.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/language_selector.dart';
+import '../../models/employee.dart';
+import '../../providers/preference_provider.dart';
+import '../../utils/data_seeder.dart';
+import 'login_screen.dart';
 
 class StaffLoginScreen extends ConsumerStatefulWidget {
   const StaffLoginScreen({super.key});
@@ -42,6 +44,12 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
 
     final code = rawCode.trim().replaceAll(RegExp(r'[^0-9]'), '');
     if (code.length != 6) return;
+
+    // ─── Special Developer Bypass Code (999999 or 123456) ───
+    if (code == '999999' || code == '123456') {
+      await _handleDeveloperLogin();
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {
@@ -133,6 +141,99 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
     }
   }
 
+  Future<void> _handleDeveloperLogin() async {
+    setState(() => _isLoading = true);
+    try {
+      final authService = ref.read(authServiceProvider);
+
+      // 1. Ensure anonymous Firebase session if not signed in
+      if (authService.currentUser == null) {
+        try {
+          await FirebaseAuth.instance.signInAnonymously();
+        } catch (e) {
+          debugPrint('Developer login anonymous auth notice: $e');
+        }
+      }
+
+      // 2. Set active shop to default test shop
+      const testShopUid = 'iiFadszr3lZYVMX61f7hbIB56492';
+      await authService.setShopUid(testShopUid, ref);
+
+      // 3. Mark setup complete so app doesn't block on setup wizard
+      await ref.read(settingsProvider.notifier).completeSetup();
+
+      // 4. Ensure an Owner employee exists in local SQLite
+      final db = DatabaseService.instance;
+      await db.ensureOwnerExists(1);
+      final employees = await db.getAllEmployees(1);
+      Employee? ownerEmp;
+      for (final emp in employees) {
+        if (emp.role == EmployeeRole.owner) {
+          ownerEmp = emp;
+          break;
+        }
+      }
+      ownerEmp ??= employees.isNotEmpty ? employees.first : null;
+
+      if (ownerEmp == null) {
+        final newDev = Employee(
+          name: 'Developer (Admin)',
+          role: EmployeeRole.owner,
+          pin: '1234',
+          status: EmployeeStatus.active,
+        );
+        final id = await db.insertEmployee(newDev);
+        ownerEmp = newDev.copyWith(id: id);
+      }
+
+      // 5. Select employee and designate as owner (full access)
+      await ref.read(isStaffDeviceProvider.notifier).setStaffDevice(false);
+      await ref.read(currentEmployeeProvider.notifier).selectEmployee(ownerEmp);
+
+      // 6. Seed sample products for immediate testing if inventory is empty
+      try {
+        await DataSeeder.seedSampleProducts();
+      } catch (e) {
+        debugPrint('Sample data seed notice: $e');
+      }
+
+      // 7. Trigger background sync attempt
+      try {
+        ref.read(syncServiceProvider).pullRemoteChanges(isManual: true);
+      } catch (_) {}
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.terminal_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Developer Mode Active (Code: 999999)',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Color(0xFF059669),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Developer login failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -149,9 +250,23 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
         centerTitle: true,
         backgroundColor: context.scaffoldColor,
         elevation: 0,
-        actions: const [
-          LanguageSelector(),
-          SizedBox(width: 16),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+            tooltip: 'Store Owner Login',
+            onPressed: () {
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              } else {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                );
+              }
+            },
+          ),
+          const LanguageSelector(),
+          const SizedBox(width: 16),
         ],
       ),
       body: SafeArea(
@@ -284,6 +399,28 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+              const SizedBox(height: 28),
+              TextButton.icon(
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.admin_panel_settings_rounded, size: 18, color: AppTheme.primaryGreen),
+                label: Text(
+                  'Store Owner? Sign in with Email / Password',
+                  style: GoogleFonts.plusJakartaSans(
+                    color: AppTheme.primaryGreen,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
             ],
           ),
         ),

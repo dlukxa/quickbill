@@ -1,6 +1,6 @@
 ; QuickBill POS - Inno Setup Installer Script
 #define MyAppName "QuickBill POS"
-#define MyAppVersion "1.0.7"
+#define MyAppVersion "1.0.8"
 #define MyAppPublisher "QuickBill POS Solutions"
 #define MyAppURL "https://quickbill.lk"
 #define MyAppExeName "quickbill.exe"
@@ -23,6 +23,9 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
+CloseApplications=yes
+RestartApplications=yes
+SetupMutex=QuickBillPOSSetupMutex
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -43,5 +46,5 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 [Run]
 ; Silently install or verify Microsoft Visual C++ 2015-2022 Runtime
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /passive /norestart"; StatusMsg: "Configuring Microsoft Visual C++ Runtime and System Components..."; Flags: waituntilterminated
-; Launch QuickBill POS at the end of setup
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+; Launch QuickBill POS at the end of setup (runs in both interactive and silent auto-updates)
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; WorkingDir: "{app}"; Flags: nowait postinstall

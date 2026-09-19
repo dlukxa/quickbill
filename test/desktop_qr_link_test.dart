@@ -14,6 +14,9 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
   });
 
   testWidgets('Test DesktopWrapper build', (tester) async {
@@ -24,6 +27,8 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });
 }

@@ -5,10 +5,12 @@ import '../../config/theme.dart';
 import '../../providers/preference_provider.dart';
 import '../../widgets/animate_in.dart';
 import '../../widgets/gradient_button.dart';
-import '../../generated/l10n/app_localizations.dart';
+import '../auth/auth_wrapper.dart';
 
 class LanguageSelectionScreen extends ConsumerStatefulWidget {
-  const LanguageSelectionScreen({super.key});
+  final VoidCallback? onContinue;
+
+  const LanguageSelectionScreen({super.key, this.onContinue});
 
   @override
   ConsumerState<LanguageSelectionScreen> createState() => _LanguageSelectionScreenState();
@@ -21,14 +23,54 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
     {'code': 'ta', 'name': 'Tamil', 'native': 'தமிழ்'},
     {'code': 'hi', 'name': 'Hindi', 'native': 'हिन्दी'},
     {'code': 'bn', 'name': 'Bengali', 'native': 'বাংলা'},
-    {'code': 'dv', 'name': 'Dhivehi', 'native': 'ދިވެހި'},
+    {'code': 'dv', 'name': 'Dhivehi', 'native': 'ދිވެහි'},
   ];
+
+  late String _selectedCode;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCode = ref.read(settingsProvider).languageCode;
+  }
+
+  Future<void> _handleContinue() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final notifier = ref.read(settingsProvider.notifier);
+      await notifier.updateLanguage(_selectedCode);
+
+      if (!mounted) return;
+
+      if (widget.onContinue != null) {
+        widget.onContinue!();
+      } else if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AuthWrapper()),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to set language: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final settings = ref.watch(settingsProvider);
-    final notifier = ref.read(settingsProvider.notifier);
-
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -83,12 +125,14 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
                       ),
                       const SizedBox(height: 48),
                       ..._languages.map((lang) {
-                        final isSelected = settings.languageCode == lang['code'];
+                        final isSelected = _selectedCode == lang['code'];
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: InkWell(
                             onTap: () {
-                              notifier.updateLanguage(lang['code']!);
+                              setState(() {
+                                _selectedCode = lang['code']!;
+                              });
                             },
                             borderRadius: BorderRadius.circular(16),
                             child: AnimatedContainer(
@@ -162,21 +206,28 @@ class _LanguageSelectionScreenState extends ConsumerState<LanguageSelectionScree
                 ),
               ),
               child: GradientButton(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Continue',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.arrow_forward_rounded, color: Colors.white),
-                  ],
-                ),
-                onPressed: () {
-                  notifier.updateLanguage(settings.languageCode);
-                },
+                onPressed: _isLoading ? null : _handleContinue,
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Continue',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          SizedBox(width: 8),
+                          Icon(Icons.arrow_forward_rounded, color: Colors.white),
+                        ],
+                      ),
               ),
             ),
           ],

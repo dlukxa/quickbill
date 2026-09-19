@@ -67,6 +67,7 @@ class AppSettings {
   final double? _receiptMarginBottomMm;
 
   // Typography & Font Sizes (in pt)
+  final double? _receiptFontScale;
   final double? _receiptMainFontSize;
   final double? _receiptStoreNameFontSize;
   final double? _receiptProductNameFontSize;
@@ -90,7 +91,7 @@ class AppSettings {
   final bool? _showReceiptDateTime;
 
   // Presets
-  final String? _receiptActivePreset; // 'standard', 'large', 'compact', 'custom'
+  final String? _receiptActivePreset; // 'standard', 'large', 'extra_large', 'jumbo_2x', 'compact', 'custom'
   final String? _receiptCustomPresetsJson;
 
   bool get hasSelectedLanguage => _hasSelectedLanguage ?? false;
@@ -108,6 +109,7 @@ class AppSettings {
   double get receiptMarginRightMm => _receiptMarginRightMm ?? 3.0;
   double get receiptMarginTopMm => _receiptMarginTopMm ?? 4.0;
   double get receiptMarginBottomMm => _receiptMarginBottomMm ?? 6.0;
+  double get receiptFontScale => _receiptFontScale ?? 1.0;
   double get receiptMainFontSize => _receiptMainFontSize ?? 12.0;
   double get receiptStoreNameFontSize => _receiptStoreNameFontSize ?? 18.0;
   double get receiptProductNameFontSize => _receiptProductNameFontSize ?? 12.0;
@@ -194,6 +196,7 @@ class AppSettings {
     double receiptMarginRightMm = 3.0,
     double receiptMarginTopMm = 4.0,
     double receiptMarginBottomMm = 6.0,
+    double receiptFontScale = 1.0,
     double receiptMainFontSize = 12.0,
     double receiptStoreNameFontSize = 18.0,
     double receiptProductNameFontSize = 12.0,
@@ -229,6 +232,7 @@ class AppSettings {
         _receiptMarginRightMm = receiptMarginRightMm,
         _receiptMarginTopMm = receiptMarginTopMm,
         _receiptMarginBottomMm = receiptMarginBottomMm,
+        _receiptFontScale = receiptFontScale,
         _receiptMainFontSize = receiptMainFontSize,
         _receiptStoreNameFontSize = receiptStoreNameFontSize,
         _receiptProductNameFontSize = receiptProductNameFontSize,
@@ -299,6 +303,7 @@ class AppSettings {
     double? receiptMarginRightMm,
     double? receiptMarginTopMm,
     double? receiptMarginBottomMm,
+    double? receiptFontScale,
     double? receiptMainFontSize,
     double? receiptStoreNameFontSize,
     double? receiptProductNameFontSize,
@@ -382,6 +387,7 @@ class AppSettings {
       receiptMarginRightMm: receiptMarginRightMm ?? this.receiptMarginRightMm,
       receiptMarginTopMm: receiptMarginTopMm ?? this.receiptMarginTopMm,
       receiptMarginBottomMm: receiptMarginBottomMm ?? this.receiptMarginBottomMm,
+      receiptFontScale: receiptFontScale ?? this.receiptFontScale,
       receiptMainFontSize: receiptMainFontSize ?? this.receiptMainFontSize,
       receiptStoreNameFontSize: receiptStoreNameFontSize ?? this.receiptStoreNameFontSize,
       receiptProductNameFontSize: receiptProductNameFontSize ?? this.receiptProductNameFontSize,
@@ -460,6 +466,7 @@ class AppSettings {
       'receipt_margin_right_mm': receiptMarginRightMm,
       'receipt_margin_top_mm': receiptMarginTopMm,
       'receipt_margin_bottom_mm': receiptMarginBottomMm,
+      'receipt_font_scale': receiptFontScale,
       'receipt_main_font_size': receiptMainFontSize,
       'receipt_store_name_font_size': receiptStoreNameFontSize,
       'receipt_product_name_font_size': receiptProductNameFontSize,
@@ -494,6 +501,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   static const String _keyLowStockThreshold = 'low_stock_threshold';
   static const String _keyReceiptFooter = 'receipt_footer';
   static const String _keyLanguageCode = 'language_code';
+  static const String _keyHasSelectedLanguage = 'has_selected_language';
   static const String _keyRegionCode = 'region_code';
   static const String _keyBusinessType = 'business_type';
   static const String _keyIsSetupComplete = 'is_setup_complete';
@@ -541,6 +549,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   static const String _keyReceiptMarginRightMm = 'receipt_margin_right_mm';
   static const String _keyReceiptMarginTopMm = 'receipt_margin_top_mm';
   static const String _keyReceiptMarginBottomMm = 'receipt_margin_bottom_mm';
+  static const String _keyReceiptFontScale = 'receipt_font_scale';
   static const String _keyReceiptMainFontSize = 'receipt_main_font_size';
   static const String _keyReceiptStoreNameFontSize = 'receipt_store_name_font_size';
   static const String _keyReceiptProductNameFontSize = 'receipt_product_name_font_size';
@@ -621,6 +630,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       receiptMarginRightMm: 3.0,
       receiptMarginTopMm: 4.0,
       receiptMarginBottomMm: 6.0,
+      receiptFontScale: 1.0,
       receiptMainFontSize: 12.0,
       receiptStoreNameFontSize: 18.0,
       receiptProductNameFontSize: 12.0,
@@ -705,6 +715,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       receiptMarginRightMm: _prefs.getDouble(_keyReceiptMarginRightMm) ?? 3.0,
       receiptMarginTopMm: _prefs.getDouble(_keyReceiptMarginTopMm) ?? 4.0,
       receiptMarginBottomMm: _prefs.getDouble(_keyReceiptMarginBottomMm) ?? 6.0,
+      receiptFontScale: _prefs.getDouble(_keyReceiptFontScale) ?? 1.0,
       receiptMainFontSize: _prefs.getDouble(_keyReceiptMainFontSize) ?? 12.0,
       receiptStoreNameFontSize: _prefs.getDouble(_keyReceiptStoreNameFontSize) ?? 18.0,
       receiptProductNameFontSize: _prefs.getDouble(_keyReceiptProductNameFontSize) ?? 12.0,
@@ -726,7 +737,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       showReceiptDateTime: _prefs.getBool(_keyShowReceiptDateTime) ?? true,
       receiptActivePreset: _prefs.getString(_keyReceiptActivePreset) ?? 'standard',
       receiptCustomPresetsJson: _prefs.getString(_keyReceiptCustomPresetsJson) ?? '{}',
-      hasSelectedLanguage: _prefs.getString(_keyLanguageCode) != null,
+      hasSelectedLanguage: _prefs.getBool(_keyHasSelectedLanguage) ?? (_prefs.getString(_keyLanguageCode) != null),
     );
   }
 
@@ -781,9 +792,12 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   }
 
   Future<void> updateLanguage(String code) async {
-    await _prefs.setString(_keyLanguageCode, code);
+    final prefs = await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.setString(_keyLanguageCode, code);
+    await prefs.setBool(_keyHasSelectedLanguage, true);
     state = state.copyWith(languageCode: code, hasSelectedLanguage: true);
-    await _syncToCloud();
+    _syncToCloud();
   }
 
   Future<void> updateRegion(String code) async {
@@ -1013,7 +1027,15 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
     await _syncToCloud();
   }
 
+  Future<void> updateReceiptFontScale(double scale) async {
+    final clamped = scale.clamp(0.7, 3.0);
+    await _prefs.setDouble(_keyReceiptFontScale, clamped);
+    state = state.copyWith(receiptFontScale: clamped);
+    await _syncToCloud();
+  }
+
   Future<void> updateReceiptFontSizes({
+    double? scale,
     double? main,
     double? storeName,
     double? productName,
@@ -1025,6 +1047,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
     double? lineSpacing,
     bool? boldText,
   }) async {
+    if (scale != null) await _prefs.setDouble(_keyReceiptFontScale, scale.clamp(0.7, 3.0));
     if (main != null) await _prefs.setDouble(_keyReceiptMainFontSize, main);
     if (storeName != null) await _prefs.setDouble(_keyReceiptStoreNameFontSize, storeName);
     if (productName != null) await _prefs.setDouble(_keyReceiptProductNameFontSize, productName);
@@ -1037,6 +1060,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
     if (boldText != null) await _prefs.setBool(_keyReceiptBoldText, boldText);
 
     state = state.copyWith(
+      receiptFontScale: scale ?? state.receiptFontScale,
       receiptMainFontSize: main ?? state.receiptMainFontSize,
       receiptStoreNameFontSize: storeName ?? state.receiptStoreNameFontSize,
       receiptProductNameFontSize: productName ?? state.receiptProductNameFontSize,
@@ -1097,6 +1121,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       await updateReceiptPaper(widthMm: 80.0, isCustom: false, standardSize: '80mm');
       await updateReceiptMargins(left: 3.0, right: 3.0, top: 4.0, bottom: 6.0);
       await updateReceiptFontSizes(
+        scale: 1.0,
         main: 12.0,
         storeName: 18.0,
         productName: 12.0,
@@ -1120,6 +1145,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       await updateReceiptPaper(widthMm: 80.0, isCustom: false, standardSize: '80mm');
       await updateReceiptMargins(left: 2.0, right: 2.0, top: 4.0, bottom: 6.0);
       await updateReceiptFontSizes(
+        scale: 1.3,
         main: 14.0,
         storeName: 22.0,
         productName: 14.0,
@@ -1139,10 +1165,59 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
         headerSpacing: 10.0,
         footerSpacing: 10.0,
       );
+    } else if (presetKey == 'extra_large' || presetKey == 'xl') {
+      await updateReceiptPaper(widthMm: 80.0, isCustom: false, standardSize: '80mm');
+      await updateReceiptMargins(left: 2.0, right: 2.0, top: 4.0, bottom: 6.0);
+      await updateReceiptFontSizes(
+        scale: 1.6,
+        main: 16.0,
+        storeName: 26.0,
+        productName: 16.0,
+        qtyPrice: 15.0,
+        subtotal: 16.0,
+        discount: 17.0,
+        grandTotal: 25.0,
+        footer: 14.0,
+        lineSpacing: 1.35,
+        boldText: true,
+      );
+      await updateReceiptLayout(
+        headerAlignment: 'center',
+        footerAlignment: 'center',
+        wrapProductName: true,
+        itemSpacing: 7.0,
+        headerSpacing: 12.0,
+        footerSpacing: 12.0,
+      );
+    } else if (presetKey == 'jumbo_2x' || presetKey == '2x') {
+      await updateReceiptPaper(widthMm: 80.0, isCustom: false, standardSize: '80mm');
+      await updateReceiptMargins(left: 1.5, right: 1.5, top: 4.0, bottom: 6.0);
+      await updateReceiptFontSizes(
+        scale: 2.0,
+        main: 18.0,
+        storeName: 30.0,
+        productName: 19.0,
+        qtyPrice: 17.0,
+        subtotal: 18.0,
+        discount: 19.0,
+        grandTotal: 28.0,
+        footer: 16.0,
+        lineSpacing: 1.45,
+        boldText: true,
+      );
+      await updateReceiptLayout(
+        headerAlignment: 'center',
+        footerAlignment: 'center',
+        wrapProductName: true,
+        itemSpacing: 8.0,
+        headerSpacing: 14.0,
+        footerSpacing: 14.0,
+      );
     } else if (presetKey == 'compact') {
       await updateReceiptPaper(widthMm: 58.0, isCustom: false, standardSize: '58mm');
       await updateReceiptMargins(left: 1.5, right: 1.5, top: 2.0, bottom: 3.0);
       await updateReceiptFontSizes(
+        scale: 0.95,
         main: 10.0,
         storeName: 15.0,
         productName: 10.5,

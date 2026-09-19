@@ -17,7 +17,7 @@
       "android": {
         "default": {
           "projectId": "quickbill-2a76b",
-          "appId": "1:20897788348:android:3638803f4f6c5a89bc7bb9",
+          "appId": "1:20897788348:android:b64278775d5b4aa1bc7bb9",
           "fileOutput": "android/app/google-services.json"
         }
       },
@@ -41,7 +41,7 @@
         "lib/firebase_options.dart": {
           "projectId": "quickbill-2a76b",
           "configurations": {
-            "android": "1:20897788348:android:3638803f4f6c5a89bc7bb9",
+            "android": "1:20897788348:android:b64278775d5b4aa1bc7bb9",
             "ios": "1:20897788348:ios:804c1d26ca61f4f1bc7bb9",
             "macos": "1:20897788348:ios:804c1d26ca61f4f1bc7bb9",
             "web": "1:20897788348:web:5a08c38bd1dec9febc7bb9",

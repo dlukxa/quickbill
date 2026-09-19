@@ -128,6 +128,9 @@ class AuthService {
   AuthService._init();
 
   FirebaseAuth get _auth => FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    serverClientId: '20897788348-jelvtmta07f6l88i8ihmb50henjq9ttn.apps.googleusercontent.com',
+  );
 
   // Sign up
   Future<UserCredential> signUp(String email, String password, [String? deviceId]) async {
@@ -143,15 +146,24 @@ class AuthService {
       await prefs.setString('dev_password_cache', password);
       
       if (cred.user != null) {
-        final Map<String, dynamic> data = {
-          'updated_at': FieldValue.serverTimestamp(),
-          'created_at': FieldValue.serverTimestamp(),
-        };
-        if (deviceId != null) {
-          data['last_device_id'] = deviceId;
+        await clearShopUid();
+        try {
+          final Map<String, dynamic> data = {
+            'updated_at': FieldValue.serverTimestamp(),
+            'created_at': FieldValue.serverTimestamp(),
+          };
+          if (deviceId != null) {
+            data['last_device_id'] = deviceId;
+          }
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(cred.user!.uid)
+              .set(data, SetOptions(merge: true))
+              .timeout(const Duration(seconds: 5));
+          await _ensureTrialSubscription(cred.user!.uid);
+        } catch (e) {
+          debugPrint('⚠️ Warning syncing user data after sign up: $e');
         }
-        await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).set(data, SetOptions(merge: true));
-        await _ensureTrialSubscription(cred.user!.uid);
       }
 
       return cred;
@@ -174,14 +186,23 @@ class AuthService {
       await prefs.setString('dev_password_cache', password);
       
       if (cred.user != null) {
-        final Map<String, dynamic> data = {
-          'updated_at': FieldValue.serverTimestamp(),
-        };
-        if (deviceId != null) {
-          data['last_device_id'] = deviceId;
+        await clearShopUid();
+        try {
+          final Map<String, dynamic> data = {
+            'updated_at': FieldValue.serverTimestamp(),
+          };
+          if (deviceId != null) {
+            data['last_device_id'] = deviceId;
+          }
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(cred.user!.uid)
+              .set(data, SetOptions(merge: true))
+              .timeout(const Duration(seconds: 5));
+          await _ensureTrialSubscription(cred.user!.uid);
+        } catch (e) {
+          debugPrint('⚠️ Warning syncing user data after sign in: $e');
         }
-        await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).set(data, SetOptions(merge: true));
-        await _ensureTrialSubscription(cred.user!.uid);
       }
       
       return cred;
@@ -192,10 +213,14 @@ class AuthService {
 
   // Google Sign-In / Sign-Up
   Future<UserCredential> signInWithGoogle([String? deviceId]) async {
-    final googleSignIn = GoogleSignIn(
-      serverClientId: '20897788348-jelvtmta07f6l88i8ihmb50henjq9ttn.apps.googleusercontent.com',
-    );
-    final googleUser = await googleSignIn.signIn();
+    try {
+      // Force account chooser to appear on Android and clear stale/cached sessions
+      await _googleSignIn.signOut();
+    } catch (e) {
+      debugPrint('Notice signing out GoogleSignIn before signIn: $e');
+    }
+
+    final googleUser = await _googleSignIn.signIn();
     if (googleUser == null) throw Exception('Google sign-in cancelled');
 
     final googleAuth = await googleUser.authentication;
@@ -207,14 +232,23 @@ class AuthService {
     final cred = await _auth.signInWithCredential(credential);
 
     if (cred.user != null) {
-      final Map<String, dynamic> data = {
-        'updated_at': FieldValue.serverTimestamp(),
-      };
-      if (deviceId != null) {
-        data['last_device_id'] = deviceId;
+      await clearShopUid();
+      try {
+        final Map<String, dynamic> data = {
+          'updated_at': FieldValue.serverTimestamp(),
+        };
+        if (deviceId != null) {
+          data['last_device_id'] = deviceId;
+        }
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(cred.user!.uid)
+            .set(data, SetOptions(merge: true))
+            .timeout(const Duration(seconds: 5));
+        await _ensureTrialSubscription(cred.user!.uid);
+      } catch (e) {
+        debugPrint('⚠️ Warning syncing user data after Google sign in: $e');
       }
-      await FirebaseFirestore.instance.collection('users').doc(cred.user!.uid).set(data, SetOptions(merge: true));
-      await _ensureTrialSubscription(cred.user!.uid);
     }
 
     return cred;
@@ -275,7 +309,14 @@ class AuthService {
     // 3. Clear shop uid logic
     await clearShopUid();
     
-    // 4. Firebase Auth logout
+    // 4. Google Sign-In logout
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      debugPrint('Notice signing out of Google: $e');
+    }
+
+    // 5. Firebase Auth logout
     if (!Platform.isWindows && !Platform.isLinux && Firebase.apps.isNotEmpty) {
       try {
         await _auth.signOut();

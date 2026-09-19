@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../config/theme.dart';
+import '../../firebase_options.dart';
 import '../../services/staff_login_service.dart';
 import '../../widgets/store_logo_widget.dart';
 
@@ -79,6 +80,15 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
 
   @override
   void dispose() {
+    // Delete any active pending session document to avoid orphaned records
+    final currentSessionId = _sessionId;
+    if (currentSessionId != null && Firebase.apps.isNotEmpty) {
+      FirebaseFirestore.instance
+          .collection('pc_sessions')
+          .doc(currentSessionId)
+          .delete()
+          .catchError((_) {});
+    }
     _sessionSub?.cancel();
     _refreshTimer?.cancel();
     _countdownTimer?.cancel();
@@ -90,62 +100,114 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
   }
 
   Future<void> _createSession() async {
+    // Clean up previous timers and session doc if refreshing
+    _sessionSub?.cancel();
+    _refreshTimer?.cancel();
+    _countdownTimer?.cancel();
+
+    final previousSessionId = _sessionId;
+    if (previousSessionId != null && Firebase.apps.isNotEmpty) {
+      FirebaseFirestore.instance
+          .collection('pc_sessions')
+          .doc(previousSessionId)
+          .delete()
+          .catchError((_) {});
+    }
+
+    if (mounted) {
+      setState(() {
+        _sessionId = null;
+        _pairingCode = null;
+        _error = null;
+      });
+    }
+
     try {
+      // 1. Ensure Firebase is initialized
+      if (Firebase.apps.isEmpty) {
+        try {
+          await Firebase.initializeApp(
+            options: DefaultFirebaseOptions.currentPlatform,
+          ).timeout(const Duration(seconds: 4));
+        } catch (e) {
+          debugPrint('DesktopQrLinkScreen Firebase.initializeApp notice: $e');
+        }
+      }
+
+      if (!mounted) return;
+
+      if (Firebase.apps.isEmpty) {
+        setState(() {
+          _error = 'Cloud pairing is currently unavailable on this device. '
+              'Please check your internet connection or use manual Shop Code / Login below.';
+        });
+        return;
+      }
+
+      // 2. Obtain an authenticated session ID or unique Firestore ID
       String sessionId;
-      try {
-        if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
-          sessionId = FirebaseAuth.instance.currentUser!.uid;
-        } else if (Firebase.apps.isNotEmpty) {
+      if (FirebaseAuth.instance.currentUser != null) {
+        sessionId = FirebaseAuth.instance.currentUser!.uid;
+      } else {
+        try {
           final userCred = await FirebaseAuth.instance
               .signInAnonymously()
               .timeout(const Duration(seconds: 3));
           sessionId = userCred.user!.uid;
-        } else {
-          sessionId = 'pc_${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecondsSinceEpoch % 100000}';
+        } catch (authError) {
+          debugPrint('DesktopQrLinkScreen anonymous auth notice: $authError');
+          // If anonymous sign-in fails, generate a unique Firestore doc ID
+          sessionId = FirebaseFirestore.instance.collection('pc_sessions').doc().id;
         }
-      } catch (authError) {
-        debugPrint('DesktopQrLinkScreen auth fallback: $authError');
-        sessionId = 'pc_${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecondsSinceEpoch % 100000}';
       }
 
-      // 6-digit numeric pairing code
+      if (!mounted) return;
+
+      // 3. Generate 6-digit numeric pairing code
       final pairingCode = (100000 + Random().nextInt(900000)).toString();
 
-      if (Firebase.apps.isNotEmpty) {
-        // Write a pending session document
-        await FirebaseFirestore.instance
-            .collection('pc_sessions')
-            .doc(sessionId)
-            .set({
-          'status': 'pending',
-          'pairingCode': pairingCode,
-          'createdAt': FieldValue.serverTimestamp(),
-          'expiresAt': DateTime.now().add(const Duration(seconds: 100)).toIso8601String(),
-        }).timeout(const Duration(seconds: 3));
+      // 4. Write pending session document to Firestore and CONFIRM write
+      final sessionRef = FirebaseFirestore.instance.collection('pc_sessions').doc(sessionId);
+      await sessionRef.set({
+        'status': 'pending',
+        'pairingCode': pairingCode,
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': DateTime.now().add(const Duration(seconds: 120)).toIso8601String(),
+      }).timeout(const Duration(seconds: 4));
 
-        // Listen for mobile to authenticate the session
-        _sessionSub?.cancel();
-        _sessionSub = FirebaseFirestore.instance
-            .collection('pc_sessions')
-            .doc(sessionId)
-            .snapshots()
-            .listen((snap) {
-          if (!snap.exists) return;
-          final data = snap.data()!;
-          if (data['status'] == 'authenticated' && data['shopUid'] != null) {
-            _sessionSub?.cancel();
-            _refreshTimer?.cancel();
-            _countdownTimer?.cancel();
-            _completeLinking(data['shopUid'] as String);
-          }
-        }, onError: (err) {
-          if (!mounted) return;
-          setState(() {
-            _error = 'Connection lost: $err';
-          });
-        });
+      if (!mounted) return;
+
+      // Verify the document was written to Firestore before showing QR
+      final verifySnap = await sessionRef.get().timeout(const Duration(seconds: 3));
+      if (!mounted) return;
+      if (!verifySnap.exists) {
+        throw Exception('Cloud document could not be verified in Firestore.');
       }
 
+      // 5. Listen for mobile authentication
+      _sessionSub = sessionRef.snapshots().listen((snap) {
+        if (!snap.exists) return;
+        final data = snap.data();
+        if (data == null) return;
+        if (data['status'] == 'authenticated' && data['shopUid'] != null) {
+          _sessionSub?.cancel();
+          _refreshTimer?.cancel();
+          _countdownTimer?.cancel();
+          // Clean up session document
+          sessionRef.delete().catchError((_) {});
+          _completeLinking(data['shopUid'] as String);
+        }
+      }, onError: (err) {
+        debugPrint('DesktopQrLinkScreen session stream error: $err');
+        if (!mounted) return;
+        setState(() {
+          _error = 'Connection to cloud pairing service was interrupted. Please retry.';
+          _sessionId = null;
+          _pairingCode = null;
+        });
+      });
+
+      // 6. Only assign _sessionId, _pairingCode and reset countdown AFTER confirmed write
       if (!mounted) return;
       setState(() {
         _sessionId = sessionId;
@@ -165,16 +227,17 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         });
       });
 
-      // Refresh every 90 seconds
+      // Refresh session every 90 seconds
       _refreshTimer = Timer(const Duration(seconds: 90), () {
-        _sessionSub?.cancel();
         _createSession();
       });
     } catch (e) {
       debugPrint('DesktopQrLinkScreen: error creating session: $e');
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _sessionId = null;
+        _pairingCode = null;
+        _error = 'Unable to establish cloud pairing session: ${e.toString().replaceAll('Exception: ', '')}';
       });
     }
   }
@@ -192,9 +255,9 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
     });
 
     try {
-      // 1. Fast path for test/demo mode
+      // 1. Fast path for test/demo mode (supports 999999, 123456, TEST, DEMO)
       final upper = code.toUpperCase();
-      if (upper == 'TEST' || upper == 'DEMO' || upper == 'TESTING' || code == '123456') {
+      if (upper == 'TEST' || upper == 'DEMO' || upper == 'TESTING' || code == '123456' || code == '999999') {
         _completeLinking(kDefaultTestShopUid);
         return;
       }
@@ -812,7 +875,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
                 controller: _codeController,
                 style: GoogleFonts.inter(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'e.g. iiFadszr3lZYVMX61f7hbIB56492 or TEST',
+                  hintText: 'e.g. 999999, TEST, or Shop UID',
                   hintStyle: GoogleFonts.inter(color: Colors.white24, fontSize: 12),
                   prefixIcon: const Icon(Icons.pin_rounded, color: Colors.white38, size: 18),
                   filled: true,

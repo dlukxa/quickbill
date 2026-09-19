@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
@@ -13,18 +14,13 @@ import '../../providers/preference_provider.dart';
 import '../../providers/employee_provider.dart';
 import '../../firebase_options.dart';
 import '../../config/theme.dart';
-import '../../services/auth_service.dart';
-import '../../services/sync_service.dart';
-import '../../services/database_service.dart';
 import '../../services/backup_service.dart';
-import '../../widgets/cloud_backups_sheet.dart';
 import 'package:intl/intl.dart';
 import '../../services/update_service.dart';
 import 'update_required_screen.dart';
 import '../../services/subscription_service.dart';
 import '../../services/remote_config_service.dart';
 import '../../services/startup_logger.dart';
-import 'subscription_required_screen.dart';
 import '../subscription/subscription_paywall_screen.dart';
 import '../../services/pdf_service.dart';
 class StartupLoadingScreen extends ConsumerStatefulWidget {
@@ -135,6 +131,23 @@ class _StartupLoadingScreenState extends ConsumerState<StartupLoadingScreen> wit
       // We explicitly bypass calling native Firebase.initializeApp() on Windows desktop
       // because the precompiled Firebase C++ SDK (BoringSSL/Abseil) contains AVX2 instructions
       // which trigger STATUS_ILLEGAL_INSTRUCTION (0xC000001D) crashes on Intel Core i5-2400 (Sandy Bridge).
+      // On macOS desktop, native Firebase CocoaPods does not have this crash and can be safely initialized
+      // in the background without blocking the desktop fast-path.
+      if (Platform.isMacOS) {
+        unawaited(() async {
+          try {
+            if (Firebase.apps.isEmpty) {
+              await Firebase.initializeApp(
+                options: DefaultFirebaseOptions.currentPlatform,
+              );
+              _logStartupMilestone('macOS Firebase background initialization complete');
+            }
+          } catch (e) {
+            _logStartupMilestone('macOS Firebase background initialization notice: $e');
+            debugPrint('macOS Firebase background initialization notice: $e');
+          }
+        }());
+      }
 
       if (!mounted) return;
       setState(() {

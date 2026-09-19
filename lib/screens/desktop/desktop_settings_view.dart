@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../config/theme.dart';
 import '../../models/employee.dart';
@@ -17,6 +18,8 @@ import '../../services/export_service.dart';
 import '../../services/local_media_storage_service.dart';
 import '../../services/printing_service.dart';
 import '../../services/sync_service.dart';
+import '../../services/windows_update_service.dart';
+import '../../widgets/update_dialog.dart';
 import '../../models/sale.dart';
 import '../../models/sale_item.dart';
 import '../../utils/pos_l10n.dart';
@@ -62,6 +65,7 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
 
   bool _isSyncing = false;
   String? _syncMessage;
+  bool _isCheckingUpdate = false;
 
   @override
   void initState() {
@@ -178,6 +182,7 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
                       _buildNavItem(3, posL10n.businessModulesTab, Icons.dashboard_customize_rounded),
                       _buildNavItem(4, posL10n.cloudSyncTab, Icons.cloud_sync_rounded),
                       _buildNavItem(5, posL10n.staffPermissionsTab, Icons.badge_rounded),
+                      _buildNavItem(6, 'System & Updates', Icons.system_update_rounded),
                     ],
                   ),
                 ),
@@ -235,6 +240,7 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
       case 3: return _buildModulesTab(cardBg, borderColor, isDark);
       case 4: return _buildSyncTab(cardBg, borderColor, isDark);
       case 5: return _buildStaffTab(cardBg, borderColor, isDark);
+      case 6: return _buildSystemUpdateTab(cardBg, borderColor, isDark);
       default: return const SizedBox.shrink();
     }
   }
@@ -1984,6 +1990,177 @@ class _DesktopSettingsViewState extends ConsumerState<DesktopSettingsView> {
           ],
         ),
       ),
+    );
+  }
+
+  // ==========================================
+  // TAB 6: SYSTEM & AUTOMATIC UPDATES
+  // ==========================================
+  Widget _buildSystemUpdateTab(Color cardBg, Color borderColor, bool isDark) {
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        final version = snapshot.data?.version ?? '1.0.7';
+        final buildNumber = snapshot.data?.buildNumber ?? '11';
+        final updateLogPath = WindowsUpdateService.instance.getUpdateLogPath();
+
+        return ListView(
+          children: [
+            Text(
+              'System & Automatic Updates',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : const Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Manage application versioning, check for Windows updates, and view system logs.',
+              style: GoogleFonts.inter(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 24),
+
+            // Card 1: Application Version & Updates
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.system_update_rounded, color: AppTheme.primaryGreen, size: 24),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'QuickBill POS — Windows Edition',
+                              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Installed Version: v$version (Build $buildNumber)',
+                              style: GoogleFonts.inter(fontSize: 13, color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: _isCheckingUpdate
+                            ? null
+                            : () async {
+                                setState(() => _isCheckingUpdate = true);
+                                try {
+                                  final info = await WindowsUpdateService.instance.checkForUpdate();
+                                  if (!context.mounted) return;
+                                  setState(() => _isCheckingUpdate = false);
+                                  if (info.hasUpdate) {
+                                    UpdateDialog.show(context, info);
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('QuickBill is up to date! (v${info.currentVersion})'),
+                                        backgroundColor: AppTheme.primaryGreen,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  setState(() => _isCheckingUpdate = false);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Update check failed: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              },
+                        icon: _isCheckingUpdate
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.refresh_rounded, size: 16),
+                        label: Text(_isCheckingUpdate ? 'Checking...' : 'Check for Updates'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Icon(Icons.shield_outlined, size: 18, color: Color(0xFF10B981)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Zero-Data-Loss Guarantee: Updates only overwrite application binaries in C:\\Program Files\\QuickBill POS. Your SQLite database, invoices, products, and user settings stored in %APPDATA% are strictly preserved.',
+                          style: GoogleFonts.inter(fontSize: 12, color: const Color(0xFF10B981)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Card 2: System Directories & Diagnostics
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: borderColor),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('System Paths & Diagnostics', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.description_outlined, color: Colors.blueAccent),
+                    title: const Text('Update Log File', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    subtitle: SelectableText(updateLogPath, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  ),
+                  const Divider(),
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.storage_rounded, color: Colors.amber),
+                    title: Text('Local SQLite Database Directory', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    subtitle: SelectableText('%APPDATA%\\quickbill\\databases\\quickbill.db', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

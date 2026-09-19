@@ -152,6 +152,37 @@ void main() {
       expect(largeTotalValueStyle.fontSize, closeTo(22.0 * 1.1, 0.01));
     });
 
+    test('Overall font scale multiplies all receipt theme fonts proportionally', () {
+      final defaultSettings = AppSettings(
+        shopName: 'Test Store',
+        shopAddress: 'Address',
+        shopPhone: '011',
+        lowStockThreshold: 5,
+        receiptFooter: 'Thanks',
+        languageCode: 'en',
+        regionCode: 'LK',
+        businessType: 'Retail',
+        isSetupComplete: true,
+        autoSync: false,
+        entityCode: '1',
+      );
+
+      final scaledSettings = defaultSettings.copyWith(
+        receiptFontScale: 1.25,
+      );
+
+      expect(scaledSettings.receiptFontScale, 1.25);
+      
+      // Store Title scaled: 18.0 * 1.25 = 22.5
+      expect(ReceiptTheme.storeTitle(false, settings: scaledSettings).fontSize, closeTo(22.5, 0.01));
+      // Product Name scaled: 12.0 * 1.25 = 15.0
+      expect(ReceiptTheme.itemName(false, settings: scaledSettings).fontSize, closeTo(15.0, 0.01));
+      // Item Detail font scaled: 11.0 * 1.25 = 13.75
+      expect(ReceiptTheme.itemDetail(false, settings: scaledSettings).fontSize, closeTo(13.75, 0.01));
+      // Grand total label scaled: 17.0 * 1.25 = 21.25
+      expect(ReceiptTheme.grandTotalLabel(false, settings: scaledSettings).fontSize, closeTo(21.25, 0.01));
+    });
+
     test('Built-in presets application via copyWith / update', () {
       final baseSettings = AppSettings(
         shopName: 'Test Store',

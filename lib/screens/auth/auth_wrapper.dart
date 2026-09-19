@@ -3,12 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/auth_service.dart';
 import '../../providers/subscription_provider.dart';
-import '../../services/subscription_service.dart';
 import '../home/home_screen.dart';
-import 'login_screen.dart';
 import 'shop_setup_screen.dart';
 import '../../providers/preference_provider.dart';
-import '../subscription/subscription_expired_screen.dart';
 import '../subscription/subscription_paywall_screen.dart';
 import 'profile_picker_screen.dart';
 import '../../providers/employee_provider.dart';
@@ -17,7 +14,7 @@ import '../../services/sync_service.dart';
 import '../../models/subscription.dart';
 import '../../models/employee.dart';
 import 'device_restricted_screen.dart';
-import 'staff_login_screen.dart';
+import 'login_screen.dart';
 
 class AuthWrapper extends ConsumerWidget {
   const AuthWrapper({super.key});
@@ -31,14 +28,8 @@ class AuthWrapper extends ConsumerWidget {
     return authState.when(
       data: (user) {
         if (user == null) {
-          // ONE DEVICE RULE: If this device was previously linked as a staff device
-          // (i.e. it was set up using a QR/code handshake), skip the full login screen
-          // and go straight to the Staff Link screen. Staff devices should never see
-          // the owner's email/password form.
-          final isLinkedStaffDevice = ref.watch(isStaffDeviceProvider);
-          if (isLinkedStaffDevice) {
-            return const StaffLoginScreen();
-          }
+          // Default to the main Store Owner login (Google Sign-In, Email/Password, Create Account).
+          // Staff cashier devices can link via the Staff Device card on the login screen.
           return const LoginScreen();
         }
 

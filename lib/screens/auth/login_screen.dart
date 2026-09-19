@@ -12,6 +12,7 @@ import '../../providers/employee_provider.dart';
 import '../../services/database_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'staff_login_screen.dart';
+import 'auth_wrapper.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/language_selector.dart';
 
@@ -46,11 +47,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final deviceId = await ref.read(deviceIdProvider.future);
       await auth.signInWithGoogle(deviceId);
       await ref.read(isStaffDeviceProvider.notifier).setStaffDevice(false);
-      // Success handled by authStateProvider
+      ref.read(activeShopUidProvider.notifier).updateOverride(null);
+      
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const AuthWrapper()),
+          (route) => false,
+        );
+      }
     } catch (e) {
-      if (mounted && e.toString() != 'Exception: Google sign-in cancelled') {
+      debugPrint('Google Sign-In error: $e');
+      if (mounted && !e.toString().contains('Google sign-in cancelled')) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Google Sign-In failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -74,6 +86,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         final deviceId = await ref.read(deviceIdProvider.future);
         await auth.signIn(_emailController.text.trim(), _passwordController.text.trim(), deviceId);
         await ref.read(isStaffDeviceProvider.notifier).setStaffDevice(false);
+        ref.read(activeShopUidProvider.notifier).updateOverride(null);
       } else {
         // Clear any stale local data before creating a new account 
         // to prevent inheriting a previous session's state (e.g. if the user was deleted from Firebase Console).
@@ -98,13 +111,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         final deviceId = await ref.read(deviceIdProvider.future);
         await auth.signUp(_emailController.text.trim(), _passwordController.text.trim(), deviceId);
         await ref.read(isStaffDeviceProvider.notifier).setStaffDevice(false);
+        ref.read(activeShopUidProvider.notifier).updateOverride(null);
         if (_phoneController.text.isNotEmpty) {
           // Do not await this, as it triggers a cloud sync which may hang on slow networks.
           // We want the user to proceed immediately to the setup screen.
           ref.read(settingsProvider.notifier).updateShopPhone(_phoneController.text.trim());
         }
       }
-      // Success handled by authStateProvider in main.dart
+      
+      if (mounted) {
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const AuthWrapper()),
+          );
+        }
+      }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context)!;
@@ -223,10 +246,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   delay: const Duration(milliseconds: 175),
                   child: GestureDetector(
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const StaffLoginScreen()),
-                      );
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.pop(context);
+                      } else {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (context) => const StaffLoginScreen()),
+                        );
+                      }
                     },
                     child: Container(
                       width: double.infinity,
@@ -424,6 +451,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
         ),
+        if (Navigator.of(context).canPop())
+          Positioned(
+            top: 16,
+            left: 16,
+            child: IconButton(
+              icon: Icon(Icons.arrow_back_rounded, color: context.onSurface),
+              onPressed: () => Navigator.pop(context),
+              tooltip: 'Back to QR / Code Login',
+            ),
+          ),
         const Positioned(
           top: 16,
           right: 16,

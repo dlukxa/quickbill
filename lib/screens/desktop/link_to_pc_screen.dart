@@ -7,6 +7,30 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/theme.dart';
 
+enum PcLinkingErrorType {
+  invalidQr,
+  notAuthenticated,
+  authRequired,
+  sessionNotFound,
+  sessionExpired,
+  alreadyLinked,
+  networkError,
+  unknown,
+}
+
+class PcLinkingException implements Exception {
+  final PcLinkingErrorType type;
+  final String message;
+  const PcLinkingException(this.type, this.message);
+
+  @override
+  String toString() => message;
+}
+
+void _logPcLink(String message) {
+  debugPrint('🔗 [PC_LINK] $message');
+}
+
 /// Mobile screen that scans the PC's QR code and authenticates the session.
 /// Owner opens QuickBill → Settings → "Open on PC" → scans the QR shown on the PC.
 class LinkToPcScreen extends ConsumerStatefulWidget {
@@ -30,8 +54,10 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_isProcessing || _isDone) return;
-    final raw = capture.barcodes.first.rawValue;
+    final raw = capture.barcodes.firstOrNull?.rawValue;
     if (raw == null) return;
+
+    _logPcLink('QR code detected (length=${raw.length})');
 
     // Parse quickbill://link?session={sessionId}
     final uri = Uri.tryParse(raw);
@@ -39,11 +65,17 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
         uri.scheme != 'quickbill' ||
         uri.host != 'link' ||
         uri.queryParameters['session'] == null) {
+      _logPcLink('Invalid QR URI format: $raw');
       setState(() => _error = 'Invalid QR code. Please scan the QuickBill PC QR.');
       return;
     }
 
-    final sessionId = uri.queryParameters['session']!;
+    final sessionId = uri.queryParameters['session']!.trim();
+    if (sessionId.isEmpty) {
+      _logPcLink('QR code has empty session parameter');
+      setState(() => _error = 'Invalid QR code. Missing session ID.');
+      return;
+    }
 
     setState(() {
       _isProcessing = true;
@@ -51,20 +83,86 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
     });
 
     try {
-      // Get the owner's shopUid from SharedPreferences (set during login)
+      final authUser = FirebaseAuth.instance.currentUser;
       final prefs = await SharedPreferences.getInstance();
-      final shopUid = prefs.getString('active_shop_uid') ??
-          FirebaseAuth.instance.currentUser?.uid;
-      if (shopUid == null) throw Exception('Not logged in');
+      final activeShopUid = prefs.getString('active_shop_uid');
+      final shopUid = (activeShopUid != null && activeShopUid.isNotEmpty)
+          ? activeShopUid
+          : authUser?.uid;
 
-      await FirebaseFirestore.instance
-          .collection('pc_sessions')
-          .doc(sessionId)
-          .update({
-        'status': 'authenticated',
-        'shopUid': shopUid,
-        'linkedAt': FieldValue.serverTimestamp(),
+      _logPcLink('Authenticated UID: ${authUser?.uid ?? "none"}');
+      _logPcLink('Business/Shop ID: ${shopUid ?? "none"}');
+      _logPcLink('Pairing Session ID: $sessionId');
+      _logPcLink('Exact Firestore Path: pc_sessions/$sessionId');
+
+      if (shopUid == null || shopUid.isEmpty) {
+        throw const PcLinkingException(
+          PcLinkingErrorType.notAuthenticated,
+          'You are not signed in to a shop on this mobile device. Please sign in first.',
+        );
+      }
+
+      final sessionRef = FirebaseFirestore.instance.collection('pc_sessions').doc(sessionId);
+
+      // Atomic transaction: verify existence, check expiration, and update status
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(sessionRef);
+        final exists = snapshot.exists;
+        _logPcLink('Document Exists: $exists');
+
+        if (!exists) {
+          throw const PcLinkingException(
+            PcLinkingErrorType.sessionNotFound,
+            'PC pairing session was not found. Please refresh the QR code on your PC screen and scan again.',
+          );
+        }
+
+        final data = snapshot.data();
+        if (data == null) {
+          throw const PcLinkingException(
+            PcLinkingErrorType.sessionNotFound,
+            'Corrupted session data. Please refresh the QR code on your PC.',
+          );
+        }
+
+        // Check if session has expired (TTL)
+        final expiresAtRaw = data['expiresAt'];
+        if (expiresAtRaw != null) {
+          DateTime? expiresAt;
+          if (expiresAtRaw is Timestamp) {
+            expiresAt = expiresAtRaw.toDate();
+          } else if (expiresAtRaw is String) {
+            expiresAt = DateTime.tryParse(expiresAtRaw);
+          }
+          if (expiresAt != null && DateTime.now().isAfter(expiresAt)) {
+            _logPcLink('Session expired at $expiresAt (current: ${DateTime.now()})');
+            throw const PcLinkingException(
+              PcLinkingErrorType.sessionExpired,
+              'This PC pairing session has expired. Please refresh the QR code on your PC screen.',
+            );
+          }
+        }
+
+        // Check current status
+        final status = data['status'] as String?;
+        if (status == 'authenticated') {
+          _logPcLink('Session is already authenticated');
+          throw const PcLinkingException(
+            PcLinkingErrorType.alreadyLinked,
+            'This PC is already linked to a shop.',
+          );
+        }
+
+        _logPcLink('Writing authenticated state to pc_sessions/$sessionId with shopUid: $shopUid');
+        transaction.update(sessionRef, {
+          'status': 'authenticated',
+          'shopUid': shopUid,
+          'linkedAt': FieldValue.serverTimestamp(),
+          'linkedByUid': authUser?.uid,
+        });
       });
+
+      _logPcLink('PC linking transaction succeeded for session: $sessionId');
 
       setState(() {
         _isDone = true;
@@ -73,7 +171,30 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
 
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) Navigator.pop(context);
+    } on PcLinkingException catch (e) {
+      _logPcLink('Operation failed (PcLinkingException): ${e.type} - ${e.message}');
+      setState(() {
+        _error = e.message;
+        _isProcessing = false;
+      });
+    } on FirebaseException catch (e) {
+      _logPcLink('Operation failed (FirebaseException): code=${e.code}, message=${e.message}');
+      String userMessage;
+      if (e.code == 'not-found') {
+        userMessage = 'PC pairing session was not found. Please refresh the QR code on your PC screen.';
+      } else if (e.code == 'permission-denied') {
+        userMessage = 'Permission denied. Please ensure you are logged in as an authorized store user.';
+      } else if (e.code == 'unavailable') {
+        userMessage = 'Cloud service is currently unreachable. Please check your internet connection.';
+      } else {
+        userMessage = 'Failed to link PC: ${e.message ?? e.code}';
+      }
+      setState(() {
+        _error = userMessage;
+        _isProcessing = false;
+      });
     } catch (e) {
+      _logPcLink('Operation failed (Unexpected): $e');
       setState(() {
         _error = 'Failed to link PC: $e';
         _isProcessing = false;
@@ -186,7 +307,7 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
                       const CircularProgressIndicator(
                         color: AppTheme.primaryGreen,
                       )
-                    else if (_error != null)
+                    else if (_error != null) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -201,7 +322,25 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
                             fontSize: 13,
                           ),
                         ),
-                      )
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _error = null;
+                            _isProcessing = false;
+                          });
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('Try Again'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ]
                     else ...[
                       Text(
                         'Point your camera at the QR code\nshown on your Windows PC',
@@ -314,12 +453,23 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
       _error = null;
     });
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final shopUid = prefs.getString('active_shop_uid') ??
-          FirebaseAuth.instance.currentUser?.uid;
-      if (shopUid == null) throw Exception('Not logged in on mobile');
+    _logPcLink('Attempting to link PC with 6-digit code: [REDACTED]');
 
+    try {
+      final authUser = FirebaseAuth.instance.currentUser;
+      final prefs = await SharedPreferences.getInstance();
+      final shopUid = prefs.getString('active_shop_uid') ?? authUser?.uid;
+
+      _logPcLink('Auth Check - Current User: ${authUser?.uid}, Active Shop UID: $shopUid');
+
+      if (shopUid == null || shopUid.isEmpty) {
+        throw const PcLinkingException(
+          PcLinkingErrorType.authRequired,
+          'You must be logged in to QuickBill on this phone to link a PC.',
+        );
+      }
+
+      _logPcLink('Querying pc_sessions for pending code...');
       final query = await FirebaseFirestore.instance
           .collection('pc_sessions')
           .where('pairingCode', isEqualTo: code)
@@ -328,18 +478,75 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
           .get();
 
       if (query.docs.isEmpty) {
-        throw Exception('Pairing code not found or expired.');
+        _logPcLink('No pending document found for pairing code');
+        throw const PcLinkingException(
+          PcLinkingErrorType.sessionNotFound,
+          'Pairing code was not found or has expired. Please refresh the code on your PC screen.',
+        );
       }
 
       final docId = query.docs.first.id;
-      await FirebaseFirestore.instance
-          .collection('pc_sessions')
-          .doc(docId)
-          .update({
-        'status': 'authenticated',
-        'shopUid': shopUid,
-        'linkedAt': FieldValue.serverTimestamp(),
+      final sessionRef = FirebaseFirestore.instance.collection('pc_sessions').doc(docId);
+      _logPcLink('Found document $docId. Running atomic transaction to verify & update...');
+
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(sessionRef);
+        final exists = snapshot.exists;
+        _logPcLink('Transaction get for $docId - exists: $exists');
+
+        if (!exists) {
+          throw const PcLinkingException(
+            PcLinkingErrorType.sessionNotFound,
+            'Pairing session was not found. Please refresh the code on your PC screen.',
+          );
+        }
+
+        final data = snapshot.data();
+        if (data == null) {
+          throw const PcLinkingException(
+            PcLinkingErrorType.sessionNotFound,
+            'Corrupted session data. Please refresh the code on your PC.',
+          );
+        }
+
+        // Check TTL expiration
+        final expiresAtRaw = data['expiresAt'];
+        if (expiresAtRaw != null) {
+          DateTime? expiresAt;
+          if (expiresAtRaw is Timestamp) {
+            expiresAt = expiresAtRaw.toDate();
+          } else if (expiresAtRaw is String) {
+            expiresAt = DateTime.tryParse(expiresAtRaw);
+          }
+          if (expiresAt != null && DateTime.now().isAfter(expiresAt)) {
+            _logPcLink('Session $docId expired at $expiresAt');
+            throw const PcLinkingException(
+              PcLinkingErrorType.sessionExpired,
+              'This pairing code has expired. Please refresh the code on your PC screen.',
+            );
+          }
+        }
+
+        // Check if already authenticated
+        final status = data['status'] as String?;
+        if (status == 'authenticated') {
+          _logPcLink('Session $docId is already authenticated');
+          throw const PcLinkingException(
+            PcLinkingErrorType.alreadyLinked,
+            'This PC is already linked to a shop.',
+          );
+        }
+
+        _logPcLink('Writing authenticated state to pc_sessions/$docId with shopUid: $shopUid');
+        transaction.update(sessionRef, {
+          'status': 'authenticated',
+          'shopUid': shopUid,
+          'linkedAt': FieldValue.serverTimestamp(),
+          'linkedByUid': authUser?.uid,
+        });
       });
+
+      _logPcLink('PC linking transaction succeeded for session: $docId');
 
       setState(() {
         _isDone = true;
@@ -348,9 +555,32 @@ class _LinkToPcScreenState extends ConsumerState<LinkToPcScreen> {
 
       await Future.delayed(const Duration(seconds: 1));
       if (mounted) Navigator.pop(context);
-    } catch (e) {
+    } on PcLinkingException catch (e) {
+      _logPcLink('Code link failed (PcLinkingException): ${e.type} - ${e.message}');
       setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
+        _error = e.message;
+        _isProcessing = false;
+      });
+    } on FirebaseException catch (e) {
+      _logPcLink('Code link failed (FirebaseException): code=${e.code}, message=${e.message}');
+      String userMessage;
+      if (e.code == 'not-found') {
+        userMessage = 'Pairing code was not found. Please refresh the code on your PC screen.';
+      } else if (e.code == 'permission-denied') {
+        userMessage = 'Permission denied. Please ensure you are logged in as an authorized store user.';
+      } else if (e.code == 'unavailable') {
+        userMessage = 'Cloud service is currently unreachable. Please check your internet connection.';
+      } else {
+        userMessage = 'Failed to link PC: ${e.message ?? e.code}';
+      }
+      setState(() {
+        _error = userMessage;
+        _isProcessing = false;
+      });
+    } catch (e) {
+      _logPcLink('Code link failed (Unexpected): $e');
+      setState(() {
+        _error = 'Failed to link PC: $e';
         _isProcessing = false;
       });
     }

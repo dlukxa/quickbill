@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCX8aP5N_2zgIFNS22EtU_WCNX04bUN3ws',
-    appId: '1:20897788348:android:3638803f4f6c5a89bc7bb9',
+    appId: '1:20897788348:android:b64278775d5b4aa1bc7bb9',
     messagingSenderId: '20897788348',
     projectId: 'quickbill-2a76b',
     storageBucket: 'quickbill-2a76b.firebasestorage.app',

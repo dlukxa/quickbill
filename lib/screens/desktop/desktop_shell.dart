@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'dart:io';
 import '../../config/theme.dart';
 import '../../models/employee.dart';
 import '../../providers/branch_provider.dart';
@@ -11,6 +12,8 @@ import '../../providers/employee_provider.dart';
 import '../../providers/preference_provider.dart';
 import '../../services/cash_drawer_service.dart';
 import '../../services/sync_service.dart';
+import '../../services/windows_update_service.dart';
+import '../../widgets/update_dialog.dart';
 import '../../utils/pos_l10n.dart';
 import 'desktop_customers_view.dart';
 import 'desktop_dashboard_view.dart';
@@ -63,6 +66,21 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
         debugPrint('Desktop background sync startup: $e');
       }
     });
+
+    // Check for Windows desktop updates in background
+    if (Platform.isWindows) {
+      Future.delayed(const Duration(seconds: 4), () async {
+        if (!mounted) return;
+        try {
+          final updateInfo = await WindowsUpdateService.instance.checkForUpdate();
+          if (updateInfo.hasUpdate && mounted) {
+            UpdateDialog.show(context, updateInfo);
+          }
+        } catch (e) {
+          debugPrint('Auto-update background check notice: $e');
+        }
+      });
+    }
   }
 
   Future<void> _loadSidebarPreferences() async {

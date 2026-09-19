@@ -744,6 +744,54 @@ class _ReceiptPrintSettingsScreenState
           ),
           const Divider(height: 16),
           _buildSliderRow(
+            label: 'Overall Font Scale',
+            value: settings.receiptFontScale,
+            min: 0.7,
+            max: 1.8,
+            divisions: 22,
+            unit: 'x',
+            onChanged: (val) => notifier.updateReceiptFontSizes(scale: val),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12, top: 4),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  'Quick Scale:',
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                  ),
+                ),
+                ChoiceChip(
+                  label: const Text('Compact (85%)', style: TextStyle(fontSize: 12)),
+                  selected: (settings.receiptFontScale - 0.85).abs() < 0.04,
+                  onSelected: (_) => notifier.updateReceiptFontSizes(scale: 0.85),
+                ),
+                ChoiceChip(
+                  label: const Text('Normal (100%)', style: TextStyle(fontSize: 12)),
+                  selected: (settings.receiptFontScale - 1.0).abs() < 0.04,
+                  onSelected: (_) => notifier.updateReceiptFontSizes(scale: 1.0),
+                ),
+                ChoiceChip(
+                  label: const Text('Large (115%)', style: TextStyle(fontSize: 12)),
+                  selected: (settings.receiptFontScale - 1.15).abs() < 0.04,
+                  onSelected: (_) => notifier.updateReceiptFontSizes(scale: 1.15),
+                ),
+                ChoiceChip(
+                  label: const Text('X-Large (130%)', style: TextStyle(fontSize: 12)),
+                  selected: (settings.receiptFontScale - 1.30).abs() < 0.04,
+                  onSelected: (_) => notifier.updateReceiptFontSizes(scale: 1.30),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 16),
+          _buildSliderRow(
             label: 'Store Name Size',
             value: settings.receiptStoreNameFontSize,
             min: 14.0,
