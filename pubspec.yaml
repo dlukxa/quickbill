@@ -1,6 +1,6 @@
 name: quickbill
 description: Phone-based POS system for small shops
-version: 1.0.8+12
+version: 1.0.8.1+13
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

@@ -1,6 +1,6 @@
 ; QuickBill POS - Inno Setup Installer Script
 #define MyAppName "QuickBill POS"
-#define MyAppVersion "1.0.8"
+#define MyAppVersion "1.0.8.1"
 #define MyAppPublisher "QuickBill POS Solutions"
 #define MyAppURL "https://quickbill.lk"
 #define MyAppExeName "quickbill.exe"
