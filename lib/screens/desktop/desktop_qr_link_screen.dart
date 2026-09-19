@@ -128,7 +128,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         try {
           await Firebase.initializeApp(
             options: DefaultFirebaseOptions.currentPlatform,
-          ).timeout(const Duration(seconds: 4));
+          ).timeout(const Duration(seconds: 20));
         } catch (e) {
           debugPrint('DesktopQrLinkScreen Firebase.initializeApp notice: $e');
         }
@@ -152,7 +152,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         try {
           final userCred = await FirebaseAuth.instance
               .signInAnonymously()
-              .timeout(const Duration(seconds: 3));
+              .timeout(const Duration(seconds: 15));
           sessionId = userCred.user!.uid;
         } catch (authError) {
           debugPrint('DesktopQrLinkScreen anonymous auth notice: $authError');
@@ -173,12 +173,12 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         'pairingCode': pairingCode,
         'createdAt': FieldValue.serverTimestamp(),
         'expiresAt': DateTime.now().add(const Duration(seconds: 120)).toIso8601String(),
-      }).timeout(const Duration(seconds: 4));
+      }).timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
 
       // Verify the document was written to Firestore before showing QR
-      final verifySnap = await sessionRef.get().timeout(const Duration(seconds: 3));
+      final verifySnap = await sessionRef.get().timeout(const Duration(seconds: 10));
       if (!mounted) return;
       if (!verifySnap.exists) {
         throw Exception('Cloud document could not be verified in Firestore.');
