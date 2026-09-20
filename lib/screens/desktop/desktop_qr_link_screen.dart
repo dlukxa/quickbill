@@ -122,124 +122,130 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
       });
     }
 
+    // ── STEP 1: Generate IDs immediately so QR can appear without waiting ──
+    // Generate a unique session ID locally right now — no network needed.
+    String sessionId;
     try {
-      // 1. Ensure Firebase is initialized
-      if (Firebase.apps.isEmpty) {
-        try {
-          await Firebase.initializeApp(
-            options: DefaultFirebaseOptions.currentPlatform,
-          ).timeout(const Duration(seconds: 20));
-        } catch (e) {
-          debugPrint('DesktopQrLinkScreen Firebase.initializeApp notice: $e');
-        }
-      }
-
-      if (!mounted) return;
-
-      if (Firebase.apps.isEmpty) {
-        setState(() {
-          _error = 'Cloud pairing is currently unavailable on this device. '
-              'Please check your internet connection or use manual Shop Code / Login below.';
-        });
-        return;
-      }
-
-      // 2. Obtain an authenticated session ID or unique Firestore ID
-      String sessionId;
-      if (FirebaseAuth.instance.currentUser != null) {
+      if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
+        // Already authenticated — reuse existing UID
         sessionId = FirebaseAuth.instance.currentUser!.uid;
       } else {
-        try {
-          final userCred = await FirebaseAuth.instance
-              .signInAnonymously()
-              .timeout(const Duration(seconds: 15));
-          sessionId = userCred.user!.uid;
-        } catch (authError) {
-          debugPrint('DesktopQrLinkScreen anonymous auth notice: $authError');
-          // If anonymous sign-in fails, generate a unique Firestore doc ID
-          sessionId = FirebaseFirestore.instance.collection('pc_sessions').doc().id;
-        }
+        // Generate a random Firestore-style doc ID locally (no network call)
+        sessionId = FirebaseFirestore.instanceFor(
+          app: Firebase.apps.isNotEmpty
+              ? Firebase.apps.first
+              : await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform).catchError((_) => Firebase.apps.first),
+        ).collection('pc_sessions').doc().id;
       }
-
-      if (!mounted) return;
-
-      // 3. Generate 6-digit numeric pairing code
-      final pairingCode = (100000 + Random().nextInt(900000)).toString();
-
-      // 4. Write pending session document to Firestore and CONFIRM write
-      final sessionRef = FirebaseFirestore.instance.collection('pc_sessions').doc(sessionId);
-      await sessionRef.set({
-        'status': 'pending',
-        'pairingCode': pairingCode,
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': DateTime.now().add(const Duration(seconds: 120)).toIso8601String(),
-      }).timeout(const Duration(seconds: 15));
-
-      if (!mounted) return;
-
-      // Verify the document was written to Firestore before showing QR
-      final verifySnap = await sessionRef.get().timeout(const Duration(seconds: 10));
-      if (!mounted) return;
-      if (!verifySnap.exists) {
-        throw Exception('Cloud document could not be verified in Firestore.');
-      }
-
-      // 5. Listen for mobile authentication
-      _sessionSub = sessionRef.snapshots().listen((snap) {
-        if (!snap.exists) return;
-        final data = snap.data();
-        if (data == null) return;
-        if (data['status'] == 'authenticated' && data['shopUid'] != null) {
-          _sessionSub?.cancel();
-          _refreshTimer?.cancel();
-          _countdownTimer?.cancel();
-          // Clean up session document
-          sessionRef.delete().catchError((_) {});
-          _completeLinking(data['shopUid'] as String);
-        }
-      }, onError: (err) {
-        debugPrint('DesktopQrLinkScreen session stream error: $err');
-        if (!mounted) return;
-        setState(() {
-          _error = 'Connection to cloud pairing service was interrupted. Please retry.';
-          _sessionId = null;
-          _pairingCode = null;
-        });
-      });
-
-      // 6. Only assign _sessionId, _pairingCode and reset countdown AFTER confirmed write
-      if (!mounted) return;
-      setState(() {
-        _sessionId = sessionId;
-        _pairingCode = pairingCode;
-        _countdown = 90.0;
-        _error = null;
-      });
-
-      // Start countdown timer
-      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        setState(() {
-          _countdown = (_countdown - 1).clamp(0, 90);
-        });
-      });
-
-      // Refresh session every 90 seconds
-      _refreshTimer = Timer(const Duration(seconds: 90), () {
-        _createSession();
-      });
-    } catch (e) {
-      debugPrint('DesktopQrLinkScreen: error creating session: $e');
-      if (!mounted) return;
-      setState(() {
-        _sessionId = null;
-        _pairingCode = null;
-        _error = 'Unable to establish cloud pairing session: ${e.toString().replaceAll('Exception: ', '')}';
-      });
+    } catch (_) {
+      // Absolute fallback: generate a random 20-char ID locally
+      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      final rng = Random();
+      sessionId = List.generate(20, (_) => chars[rng.nextInt(chars.length)]).join();
     }
+
+    final pairingCode = (100000 + Random().nextInt(900000)).toString();
+
+    // ── STEP 2: Show QR immediately — user sees it right away ──
+    if (!mounted) return;
+    setState(() {
+      _sessionId = sessionId;
+      _pairingCode = pairingCode;
+      _countdown = 90.0;
+      _error = null;
+    });
+
+    // Start countdown timer immediately
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      setState(() {
+        _countdown = (_countdown - 1).clamp(0, 90);
+      });
+    });
+
+    // Auto-refresh after 90 seconds
+    _refreshTimer = Timer(const Duration(seconds: 90), () {
+      _createSession();
+    });
+
+    // ── STEP 3: Write to Firestore in the background (non-blocking) ──
+    // QR is already shown. This runs asynchronously.
+    _writeSessionToFirestore(sessionId, pairingCode);
+  }
+
+  /// Writes the pairing session to Firestore in the background.
+  /// Retries up to 3 times with back-off. If it fails entirely, the QR is
+  /// still visible but can only be completed via manual code entry.
+  Future<void> _writeSessionToFirestore(String sessionId, String pairingCode) async {
+    // Ensure Firebase is initialized
+    if (Firebase.apps.isEmpty) {
+      try {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        ).timeout(const Duration(seconds: 20));
+      } catch (e) {
+        debugPrint('DesktopQrLinkScreen Firebase.initializeApp: $e');
+        // Firebase unavailable — QR still shows but scanning won't work.
+        // User can still use manual code / email login.
+        return;
+      }
+    }
+
+    // Ensure authenticated so Firestore security rules allow writes
+    if (FirebaseAuth.instance.currentUser == null) {
+      try {
+        await FirebaseAuth.instance
+            .signInAnonymously()
+            .timeout(const Duration(seconds: 15));
+      } catch (authError) {
+        debugPrint('DesktopQrLinkScreen anonymous auth: $authError');
+        // Continue without auth — write may still succeed if rules permit
+      }
+    }
+
+    // Write document with retry
+    final sessionRef = FirebaseFirestore.instance.collection('pc_sessions').doc(sessionId);
+    bool written = false;
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await sessionRef.set({
+          'status': 'pending',
+          'pairingCode': pairingCode,
+          'createdAt': FieldValue.serverTimestamp(),
+          'expiresAt': DateTime.now().add(const Duration(seconds: 120)).toIso8601String(),
+        }).timeout(const Duration(seconds: 15));
+        written = true;
+        break;
+      } catch (e) {
+        debugPrint('DesktopQrLinkScreen session write attempt $attempt failed: $e');
+        if (attempt < 3) await Future.delayed(Duration(seconds: attempt * 2));
+      }
+    }
+
+    if (!written) {
+      debugPrint('DesktopQrLinkScreen: Firestore write failed after 3 attempts. QR visible but cloud scan disabled.');
+      // Don't show an error — the QR is still on screen. User can use manual entry.
+      return;
+    }
+
+    if (!mounted) return;
+
+    // ── STEP 4: Listen for the mobile app to authenticate ──
+    _sessionSub = sessionRef.snapshots().listen((snap) {
+      if (!snap.exists) return;
+      final data = snap.data();
+      if (data == null) return;
+      if (data['status'] == 'authenticated' && data['shopUid'] != null) {
+        _sessionSub?.cancel();
+        _refreshTimer?.cancel();
+        _countdownTimer?.cancel();
+        sessionRef.delete().catchError((_) {});
+        _completeLinking(data['shopUid'] as String);
+      }
+    }, onError: (err) {
+      debugPrint('DesktopQrLinkScreen session stream error: $err');
+      // Don't wipe the QR — just log. User can retry scan or use manual entry.
+    });
   }
 
   Future<void> _linkWithCode(String rawCode) async {
