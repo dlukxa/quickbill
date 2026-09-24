@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,7 +10,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../config/theme.dart';
-import '../../firebase_options.dart';
 import '../../services/staff_login_service.dart';
 import '../../widgets/store_logo_widget.dart';
 
@@ -35,8 +36,9 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
     with SingleTickerProviderStateMixin {
   String? _sessionId;
   String? _pairingCode;
-  String? _error;
+  String? _syncStatus;
   StreamSubscription<DocumentSnapshot>? _sessionSub;
+  Timer? _pollTimer;
   Timer? _refreshTimer;
   double _countdown = 90.0;
   Timer? _countdownTimer;
@@ -78,17 +80,38 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
     _createSession();
   }
 
-  @override
-  void dispose() {
-    // Delete any active pending session document to avoid orphaned records
-    final currentSessionId = _sessionId;
-    if (currentSessionId != null && Firebase.apps.isNotEmpty) {
+  void _cleanupSession(String? sessionId) {
+    if (sessionId == null) return;
+    // 1. Fire-and-forget REST delete (platform independent)
+    try {
+      final client = HttpClient();
+      final uri = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/quickbill-2a76b/databases/(default)/documents/pc_sessions/$sessionId',
+      );
+      client.deleteUrl(uri).then((req) async {
+        final resp = await req.close();
+        await resp.drain();
+        client.close();
+      }).catchError((_) {
+        client.close();
+        return null;
+      });
+    } catch (_) {}
+
+    // 2. Native Firestore delete if available
+    if (Firebase.apps.isNotEmpty) {
       FirebaseFirestore.instance
           .collection('pc_sessions')
-          .doc(currentSessionId)
+          .doc(sessionId)
           .delete()
           .catchError((_) {});
     }
+  }
+
+  @override
+  void dispose() {
+    _cleanupSession(_sessionId);
+    _pollTimer?.cancel();
     _sessionSub?.cancel();
     _refreshTimer?.cancel();
     _countdownTimer?.cancel();
@@ -101,50 +124,18 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
 
   Future<void> _createSession() async {
     // Clean up previous timers and session doc if refreshing
+    _pollTimer?.cancel();
     _sessionSub?.cancel();
     _refreshTimer?.cancel();
     _countdownTimer?.cancel();
 
-    final previousSessionId = _sessionId;
-    if (previousSessionId != null && Firebase.apps.isNotEmpty) {
-      FirebaseFirestore.instance
-          .collection('pc_sessions')
-          .doc(previousSessionId)
-          .delete()
-          .catchError((_) {});
-    }
+    _cleanupSession(_sessionId);
 
-    if (mounted) {
-      setState(() {
-        _sessionId = null;
-        _pairingCode = null;
-        _error = null;
-      });
-    }
-
-    // ── STEP 1: Generate IDs immediately so QR can appear without waiting ──
-    // Generate a unique session ID locally right now — no network needed.
-    String sessionId;
-    try {
-      if (Firebase.apps.isNotEmpty && FirebaseAuth.instance.currentUser != null) {
-        // Already authenticated — reuse existing UID
-        sessionId = FirebaseAuth.instance.currentUser!.uid;
-      } else {
-        // Generate a random Firestore-style doc ID locally (no network call)
-        sessionId = FirebaseFirestore.instanceFor(
-          app: Firebase.apps.isNotEmpty
-              ? Firebase.apps.first
-              : await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform).catchError((_) => Firebase.apps.first),
-        ).collection('pc_sessions').doc().id;
-      }
-    } catch (_) {
-      // Absolute fallback: generate a random 20-char ID locally
-      const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      final rng = Random();
-      sessionId = List.generate(20, (_) => chars[rng.nextInt(chars.length)]).join();
-    }
-
-    final pairingCode = (100000 + Random().nextInt(900000)).toString();
+    // ── STEP 1: Generate session & code synchronously — zero delay, zero timeout ──
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final rng = Random();
+    final sessionId = 'pc_${List.generate(20, (_) => chars[rng.nextInt(chars.length)]).join()}';
+    final pairingCode = (100000 + rng.nextInt(900000)).toString();
 
     // ── STEP 2: Show QR immediately — user sees it right away ──
     if (!mounted) return;
@@ -152,7 +143,7 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
       _sessionId = sessionId;
       _pairingCode = pairingCode;
       _countdown = 90.0;
-      _error = null;
+      _syncStatus = null;
     });
 
     // Start countdown timer immediately
@@ -169,83 +160,135 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
     });
 
     // ── STEP 3: Write to Firestore in the background (non-blocking) ──
-    // QR is already shown. This runs asynchronously.
     _writeSessionToFirestore(sessionId, pairingCode);
   }
 
   /// Writes the pairing session to Firestore in the background.
-  /// Retries up to 3 times with back-off. If it fails entirely, the QR is
-  /// still visible but can only be completed via manual code entry.
+  /// Uses direct REST API first so Windows never hangs on native C++ Firebase plugins.
   Future<void> _writeSessionToFirestore(String sessionId, String pairingCode) async {
-    // Ensure Firebase is initialized
-    if (Firebase.apps.isEmpty) {
-      try {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        ).timeout(const Duration(seconds: 20));
-      } catch (e) {
-        debugPrint('DesktopQrLinkScreen Firebase.initializeApp: $e');
-        // Firebase unavailable — QR still shows but scanning won't work.
-        // User can still use manual code / email login.
-        return;
-      }
-    }
-
-    // Ensure authenticated so Firestore security rules allow writes
-    if (FirebaseAuth.instance.currentUser == null) {
-      try {
-        await FirebaseAuth.instance
-            .signInAnonymously()
-            .timeout(const Duration(seconds: 15));
-      } catch (authError) {
-        debugPrint('DesktopQrLinkScreen anonymous auth: $authError');
-        // Continue without auth — write may still succeed if rules permit
-      }
-    }
-
-    // Write document with retry
-    final sessionRef = FirebaseFirestore.instance.collection('pc_sessions').doc(sessionId);
     bool written = false;
-    for (int attempt = 1; attempt <= 3; attempt++) {
+
+    // 1. Direct REST write to Firestore
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/quickbill-2a76b/databases/(default)/documents/pc_sessions/$sessionId',
+      );
+      final req = await client.patchUrl(uri).timeout(const Duration(seconds: 5));
+      req.headers.contentType = ContentType.json;
+      final body = jsonEncode({
+        'fields': {
+          'status': {'stringValue': 'pending'},
+          'pairingCode': {'stringValue': pairingCode},
+          'expiresAt': {'stringValue': DateTime.now().add(const Duration(minutes: 5)).toIso8601String()},
+          'createdAt': {'timestampValue': DateTime.now().toUtc().toIso8601String()},
+        }
+      });
+      req.write(body);
+      final resp = await req.close().timeout(const Duration(seconds: 5));
+      if (resp.statusCode == 200) {
+        written = true;
+      }
+      await resp.drain();
+    } catch (e) {
+      debugPrint('DesktopQrLinkScreen REST write session note: $e');
+    } finally {
+      client.close();
+    }
+
+    // 2. Also try native Firestore if already initialized
+    if (Firebase.apps.isNotEmpty) {
       try {
-        await sessionRef.set({
+        await FirebaseFirestore.instance.collection('pc_sessions').doc(sessionId).set({
           'status': 'pending',
           'pairingCode': pairingCode,
           'createdAt': FieldValue.serverTimestamp(),
-          'expiresAt': DateTime.now().add(const Duration(seconds: 120)).toIso8601String(),
-        }).timeout(const Duration(seconds: 15));
+          'expiresAt': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
+        }).timeout(const Duration(seconds: 4));
         written = true;
-        break;
       } catch (e) {
-        debugPrint('DesktopQrLinkScreen session write attempt $attempt failed: $e');
-        if (attempt < 3) await Future.delayed(Duration(seconds: attempt * 2));
+        debugPrint('DesktopQrLinkScreen native Firestore write fallback note: $e');
       }
     }
 
-    if (!written) {
-      debugPrint('DesktopQrLinkScreen: Firestore write failed after 3 attempts. QR visible but cloud scan disabled.');
-      // Don't show an error — the QR is still on screen. User can use manual entry.
+    if (!written && mounted) {
+      // Never wipe or hide QR code! Just display a subtle status indicator
+      setState(() {
+        _syncStatus = 'Offline mode (Cloud sync pending). Use Code or Test Mode below.';
+      });
       return;
     }
 
     if (!mounted) return;
-
-    // ── STEP 4: Listen for the mobile app to authenticate ──
-    _sessionSub = sessionRef.snapshots().listen((snap) {
-      if (!snap.exists) return;
-      final data = snap.data();
-      if (data == null) return;
-      if (data['status'] == 'authenticated' && data['shopUid'] != null) {
-        _sessionSub?.cancel();
-        _refreshTimer?.cancel();
-        _countdownTimer?.cancel();
-        sessionRef.delete().catchError((_) {});
-        _completeLinking(data['shopUid'] as String);
-      }
-    }, onError: (err) {
-      debugPrint('DesktopQrLinkScreen session stream error: $err');
-      // Don't wipe the QR — just log. User can retry scan or use manual entry.
+    setState(() {
+      _syncStatus = null;
     });
+
+    // ── STEP 4: Poll for mobile authentication via REST every 1.5s ──
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final shopUid = await _checkSessionStatusViaRest(sessionId);
+      if (shopUid != null && mounted) {
+        timer.cancel();
+        _cleanupSession(sessionId);
+        _completeLinking(shopUid);
+      }
+    });
+
+    // ── STEP 5: Also listen via native Firestore stream if available ──
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        _sessionSub = FirebaseFirestore.instance
+            .collection('pc_sessions')
+            .doc(sessionId)
+            .snapshots()
+            .listen((snap) {
+          if (!snap.exists) return;
+          final data = snap.data();
+          if (data == null) return;
+          if (data['status'] == 'authenticated' && data['shopUid'] != null) {
+            _pollTimer?.cancel();
+            _sessionSub?.cancel();
+            _cleanupSession(sessionId);
+            _completeLinking(data['shopUid'] as String);
+          }
+        }, onError: (err) {
+          debugPrint('DesktopQrLinkScreen native stream error: $err');
+        });
+      } catch (_) {}
+    }
+  }
+
+  Future<String?> _checkSessionStatusViaRest(String sessionId) async {
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse(
+        'https://firestore.googleapis.com/v1/projects/quickbill-2a76b/databases/(default)/documents/pc_sessions/$sessionId',
+      );
+      final req = await client.getUrl(uri).timeout(const Duration(seconds: 4));
+      final resp = await req.close().timeout(const Duration(seconds: 4));
+      if (resp.statusCode == 200) {
+        final body = await resp.transform(utf8.decoder).join();
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        final fields = data['fields'] as Map<String, dynamic>?;
+        if (fields != null) {
+          final status = fields['status']?['stringValue'] as String?;
+          final shopUid = fields['shopUid']?['stringValue'] as String?;
+          if (status == 'authenticated' && shopUid != null && shopUid.isNotEmpty) {
+            return shopUid;
+          }
+        }
+      }
+    } catch (_) {
+      // Ignore transient polling exceptions
+    } finally {
+      client.close();
+    }
+    return null;
   }
 
   Future<void> _linkWithCode(String rawCode) async {
@@ -565,13 +608,20 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         ),
         const SizedBox(height: 20),
 
-        // QR Code Container
+        // QR Code Container - Always rendered immediately
         if (_sessionId != null)
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: QrImageView(
               data: 'quickbill://link?session=$_sessionId',
@@ -584,40 +634,6 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
               dataModuleStyle: const QrDataModuleStyle(
                 dataModuleShape: QrDataModuleShape.circle,
                 color: Color(0xFF0F172A),
-              ),
-            ),
-          )
-        else if (_error != null)
-          Container(
-            width: 220,
-            height: 220,
-            padding: const EdgeInsets.all(16),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline_rounded, color: Colors.red, size: 40),
-                  const SizedBox(height: 10),
-                  Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(color: Colors.red.shade300, fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: _createSession,
-                    icon: const Icon(Icons.refresh_rounded, size: 16),
-                    label: Text('Retry', style: GoogleFonts.inter(fontSize: 12)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryBlue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ],
               ),
             ),
           )
@@ -680,7 +696,39 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
+        ],
+
+        // Sync Status Pill (Only shown if cloud sync pending/offline, does not hide QR)
+        if (_syncStatus != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade900.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.5)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off_rounded, color: Colors.amber, size: 16),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    _syncStatus!,
+                    style: GoogleFonts.inter(fontSize: 12, color: Colors.amber.shade200),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: _createSession,
+                  child: const Icon(Icons.refresh_rounded, color: Colors.amber, size: 16),
+                ),
+              ],
+            ),
+          ),
         ],
 
         // Countdown Bar
@@ -704,13 +752,40 @@ class _DesktopQrLinkScreenState extends State<DesktopQrLinkScreen>
         ],
 
         const SizedBox(height: 16),
-        TextButton.icon(
-          onPressed: _showManualLoginDialog,
-          icon: const Icon(Icons.keyboard_rounded, size: 16, color: AppTheme.primaryGreen),
-          label: Text(
-            'No phone camera? Enter code or test mode →',
-            style: GoogleFonts.inter(color: AppTheme.primaryGreen, fontSize: 13),
-          ),
+
+        // Action Buttons Row
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          alignment: WrapAlignment.center,
+          children: [
+            ElevatedButton.icon(
+              onPressed: () => _linkWithCode('TEST'),
+              icon: const Icon(Icons.bolt_rounded, size: 16, color: Colors.black87),
+              label: Text(
+                'Open Instant Demo / Test Shop',
+                style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: _showManualLoginDialog,
+              icon: const Icon(Icons.keyboard_rounded, size: 16, color: Colors.white70),
+              label: Text(
+                'Enter Code / Login',
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.white),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.white24),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
         ),
       ],
     );
