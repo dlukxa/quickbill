@@ -13,6 +13,8 @@ class UpdateInfo {
   final String releaseNotes;
   final String fileName;
   final int fileSizeBytes;
+  final bool mandatory;
+  final String? publishedAt;
 
   const UpdateInfo({
     required this.hasUpdate,
@@ -20,17 +22,19 @@ class UpdateInfo {
     required this.latestVersion,
     required this.downloadUrl,
     required this.releaseNotes,
-    this.fileName = 'QuickBill_Setup.exe',
+    this.fileName = 'QuickBill-Setup.exe',
     this.fileSizeBytes = 0,
+    this.mandatory = false,
+    this.publishedAt,
   });
 
   @override
   String toString() =>
-      'UpdateInfo(hasUpdate: $hasUpdate, current: $currentVersion, latest: $latestVersion, url: $downloadUrl)';
+      'UpdateInfo(hasUpdate: $hasUpdate, current: $currentVersion, latest: $latestVersion, mandatory: $mandatory, url: $downloadUrl)';
 }
 
 /// Production-ready automatic update service for QuickBill Windows.
-/// Safely checks for releases on GitHub Releases API (with Firestore REST fallback),
+/// Safely checks for releases on Cloud Firestore (with GitHub Releases fallback),
 /// streams downloads with progress tracking, verifies file integrity,
 /// and executes Inno Setup without modifying user data in %APPDATA%.
 class WindowsUpdateService {
@@ -40,8 +44,13 @@ class WindowsUpdateService {
   static const String _kGitHubRepo = 'dlukxa/quickbill';
   static const String _kGitHubApiUrl =
       'https://api.github.com/repos/$_kGitHubRepo/releases/latest';
-  static const String _kFirestoreRestUrl =
-      'https://firestore.googleapis.com/v1/projects/quickbill-2a76b/databases/(default)/documents/app_config/version';
+
+  // Firestore REST endpoints (safe across all CPU types without requiring native C++ Firebase SDK)
+  static const List<String> _kFirestoreEndpoints = [
+    'https://firestore.googleapis.com/v1/projects/quickbill-2a76b/databases/(default)/documents/desktop_app/latest',
+    'https://firestore.googleapis.com/v1/projects/quickbill-2a76b/databases/(default)/documents/app_config/desktop_app',
+    'https://firestore.googleapis.com/v1/projects/quickbill-2a76b/databases/(default)/documents/app_config/version',
+  ];
 
   String? _resolvedUpdateLogPath;
 
@@ -84,26 +93,83 @@ class WindowsUpdateService {
     }
   }
 
-  /// Checks if a new update is available on GitHub Releases (or Firestore REST fallback).
+  /// Checks if a new update is available on Cloud Firestore (or GitHub Releases fallback).
   Future<UpdateInfo> checkForUpdate() async {
     log('Checking for updates...');
-    String currentVersion = '1.0.6.10';
+    String currentVersion = '1.0.6.11';
     try {
       final pkg = await PackageInfo.fromPlatform();
-      currentVersion = pkg.version;
+      if (pkg.buildNumber.isNotEmpty && !pkg.version.contains('+') && !pkg.version.contains('.${pkg.buildNumber}')) {
+        currentVersion = VersionUtils.cleanVersion('${pkg.version}+${pkg.buildNumber}');
+      } else {
+        currentVersion = VersionUtils.cleanVersion(pkg.version);
+      }
     } catch (e) {
       log('PackageInfo notice: $e, using default version $currentVersion');
     }
 
-    // 1. Try GitHub Releases API
+    // 1. Primary: Check Cloud Firestore REST endpoints (safe, offline-resilient, no native C++ AVX2 dependencies)
+    for (final endpoint in _kFirestoreEndpoints) {
+      try {
+        final client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 4);
+        final request = await client.getUrl(Uri.parse(endpoint));
+        final response = await request.close().timeout(const Duration(seconds: 4));
+
+        if (response.statusCode == 200) {
+          final body = await response.transform(utf8.decoder).join();
+          final json = jsonDecode(body) as Map<String, dynamic>;
+          final fields = json['fields'] as Map<String, dynamic>? ?? {};
+
+          final latestVerStr = fields['latestVersion']?['stringValue'] ??
+              fields['latest_version']?['stringValue'] ??
+              fields['latest_version_windows']?['stringValue'] ??
+              fields['version']?['stringValue'] ??
+              '';
+          final downloadUrl = fields['downloadUrl']?['stringValue'] ??
+              fields['download_url']?['stringValue'] ??
+              fields['update_url_windows']?['stringValue'] ??
+              fields['update_url']?['stringValue'] ??
+              '';
+          final isMandatory = fields['mandatory']?['booleanValue'] ?? false;
+          final notes = fields['releaseNotes']?['stringValue'] ??
+              fields['release_notes']?['stringValue'] ??
+              'Startup reliability and Windows compatibility fixes.';
+          final publishedAt = fields['publishedAt']?['timestampValue'] ??
+              fields['published_at']?['timestampValue'] ??
+              fields['publishedAt']?['stringValue'];
+
+          if (latestVerStr.isNotEmpty && downloadUrl.isNotEmpty) {
+            final latestVersion = VersionUtils.cleanVersion(latestVerStr);
+            final hasUpdate = VersionUtils.isUpdateAvailable(currentVersion, latestVersion);
+            log('Firestore REST check result ($endpoint): current=$currentVersion, latest=$latestVersion, hasUpdate=$hasUpdate, mandatory=$isMandatory');
+
+            return UpdateInfo(
+              hasUpdate: hasUpdate,
+              currentVersion: currentVersion,
+              latestVersion: latestVersion,
+              downloadUrl: downloadUrl,
+              releaseNotes: notes,
+              fileName: 'QuickBill-Setup-$latestVersion.exe',
+              mandatory: isMandatory,
+              publishedAt: publishedAt,
+            );
+          }
+        }
+      } catch (e) {
+        log('Firestore REST notice for $endpoint: $e');
+      }
+    }
+
+    // 2. Secondary: Try GitHub Releases API
     try {
       final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 6);
+      client.connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(Uri.parse(_kGitHubApiUrl));
       request.headers.set('User-Agent', 'QuickBillPOS-Windows');
       request.headers.set('Accept', 'application/vnd.github.v3+json');
 
-      final response = await request.close().timeout(const Duration(seconds: 6));
+      final response = await request.close().timeout(const Duration(seconds: 5));
       if (response.statusCode == 200) {
         final body = await response.transform(utf8.decoder).join();
         final json = jsonDecode(body) as Map<String, dynamic>;
@@ -147,7 +213,7 @@ class WindowsUpdateService {
             latestVersion: latestVersion,
             downloadUrl: downloadUrl,
             releaseNotes: releaseNotes,
-            fileName: 'QuickBill_Setup.exe',
+            fileName: 'QuickBill-Setup-$latestVersion.exe',
             fileSizeBytes: fileSize,
           );
         }
@@ -156,46 +222,6 @@ class WindowsUpdateService {
       }
     } catch (e) {
       log('GitHub API update check notice: $e');
-    }
-
-    // 2. Fallback to Firestore REST API (safe on Sandy Bridge, no native C++ SDK)
-    try {
-      log('Attempting Firestore REST fallback for version check...');
-      final client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 5);
-      final request = await client.getUrl(Uri.parse(_kFirestoreRestUrl));
-      final response = await request.close().timeout(const Duration(seconds: 5));
-
-      if (response.statusCode == 200) {
-        final body = await response.transform(utf8.decoder).join();
-        final json = jsonDecode(body) as Map<String, dynamic>;
-        final fields = json['fields'] as Map<String, dynamic>? ?? {};
-
-        final latestVerStr = fields['latest_version_windows']?['stringValue'] ??
-            fields['latest_version']?['stringValue'] ??
-            '';
-        final updateUrl = fields['update_url_windows']?['stringValue'] ??
-            fields['update_url']?['stringValue'] ??
-            '';
-
-        if (latestVerStr.isNotEmpty) {
-          final latestVersion = VersionUtils.cleanVersion(latestVerStr);
-          final hasUpdate =
-              VersionUtils.isUpdateAvailable(currentVersion, latestVersion);
-          log('Firestore REST check result: current=$currentVersion, latest=$latestVersion, hasUpdate=$hasUpdate');
-
-          return UpdateInfo(
-            hasUpdate: hasUpdate,
-            currentVersion: currentVersion,
-            latestVersion: latestVersion,
-            downloadUrl: updateUrl,
-            releaseNotes: 'Performance improvements, bug fixes, and stability updates.',
-            fileName: 'QuickBill_Setup.exe',
-          );
-        }
-      }
-    } catch (e) {
-      log('Firestore REST fallback notice: $e');
     }
 
     return UpdateInfo(

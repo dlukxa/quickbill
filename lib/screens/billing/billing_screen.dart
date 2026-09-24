@@ -14,6 +14,7 @@ import '../../providers/preference_provider.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/animate_in.dart';
 import '../../widgets/cached_product_image.dart';
+import '../../widgets/category_product_image.dart';
 import '../customers/customer_list_screen.dart';
 import 'payment_screen.dart';
 import 'billing_scan_screen.dart';
@@ -550,20 +551,13 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     );
   }
 
-  Widget _buildFallbackCategoryIcon(String? category, double size, double iconSize) {
-    final color = CategoryIconUtil.getColorForCategory(category);
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Icon(
-        CategoryIconUtil.getIconForCategory(category),
-        color: color,
-        size: iconSize,
-      ),
+  Widget _buildFallbackCategoryIcon(String? category, double size, double iconSize, [String? productName]) {
+    return CategoryProductImage(
+      category: category,
+      productName: productName,
+      width: size.isInfinite ? null : size,
+      height: size.isInfinite ? null : size,
+      borderRadius: BorderRadius.circular(10),
     );
   }
 
@@ -1437,9 +1431,11 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                             width: double.infinity,
                             height: double.infinity,
                             fit: BoxFit.cover,
-                            placeholder: _buildFallbackCategoryIcon(product.category, double.infinity, 28),
+                            category: product.category,
+                            productName: product.name,
+                            placeholder: _buildFallbackCategoryIcon(product.category, double.infinity, 28, product.name),
                           )
-                        : _buildFallbackCategoryIcon(product.category, double.infinity, 28),
+                        : _buildFallbackCategoryIcon(product.category, double.infinity, 28, product.name),
                   ),
                   if (!inStock)
                     Positioned.fill(
@@ -1804,9 +1800,11 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,
-                      placeholder: _buildFallbackCategoryIcon(product.category, 48, 22),
+                      category: product.category,
+                      productName: product.name,
+                      placeholder: _buildFallbackCategoryIcon(product.category, 48, 22, product.name),
                     )
-                  : _buildFallbackCategoryIcon(product.category, 48, 22),
+                  : _buildFallbackCategoryIcon(product.category, 48, 22, product.name),
             ),
             const SizedBox(width: 12),
             Expanded(

@@ -28,7 +28,10 @@ import '../../providers/product_provider.dart';
 import '../../models/sale.dart';
 import '../../providers/customer_provider.dart';
 import '../../utils/formatters.dart';
+import '../../utils/category_icon_util.dart';
+import '../../utils/l10n_extensions.dart';
 import '../../widgets/cached_product_image.dart';
+import '../../widgets/category_product_image.dart';
 import '../../widgets/store_logo_widget.dart';
 import '../../widgets/receipt/receipt_preview_dialog.dart';
 import '../billing/quick_item_sheet.dart';
@@ -84,6 +87,11 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
   final _searchFocusNode = FocusNode();
   bool _showCashierPanel = false;
 
+  // View Options (Grid vs List, Column count)
+  String _viewMode = 'grid'; // 'grid' | 'list'
+  int _gridColumns = 5; // 3, 4, 5, 6
+  int _listColumns = 1; // 1, 2
+
   // ─── Barcode Scanner (Keyboard Capture & Sequential Queue) ────────────────
   // USB/BT scanners send keystrokes very fast then press Enter or Tab.
   // We buffer characters and queue scans sequentially to prevent race conditions.
@@ -98,12 +106,42 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
   @override
   void initState() {
     super.initState();
+    _loadViewPreferences();
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _searchFocusNode.requestFocus();
       }
     });
+  }
+
+  Future<void> _loadViewPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _viewMode = prefs.getString('desktop_pos_view_mode') ?? 'grid';
+        _gridColumns = prefs.getInt('desktop_pos_grid_columns') ?? 5;
+        _listColumns = prefs.getInt('desktop_pos_list_columns') ?? 1;
+      });
+    }
+  }
+
+  void _setViewMode(String mode) async {
+    setState(() => _viewMode = mode);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('desktop_pos_view_mode', mode);
+  }
+
+  void _setGridColumns(int cols) async {
+    setState(() => _gridColumns = cols);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('desktop_pos_grid_columns', cols);
+  }
+
+  void _setListColumns(int cols) async {
+    setState(() => _listColumns = cols);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('desktop_pos_list_columns', cols);
   }
 
   @override
@@ -1245,125 +1283,234 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isCompact = constraints.maxWidth < 920;
+                final isUltraCompact = constraints.maxWidth < 740;
+
+                return Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: SinglishTextField(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      showSuggestionBanner: false,
-                      autofocus: true,
-                      textInputAction: TextInputAction.go,
-                      onSubmitted: (v) => _handleBarcodeScan(v),
-                      onChanged: (v) => setState(() => _searchQuery = v.trim()),
-                      onConverted: () => setState(() => _searchQuery = _searchController.text.trim()),
-                      style: GoogleFonts.notoSansSinhala(color: textColor, fontSize: 13.5),
-                      decoration: InputDecoration(
-                        hintText: l10n.searchHint,
-                        hintStyle: GoogleFonts.notoSansSinhala(color: hintColor, fontSize: 13),
-                        prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF10B981), size: 20),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear_rounded, size: 18),
-                                color: hintColor,
-                                onPressed: () {
-                                  _searchController.clear();
-                                  setState(() => _searchQuery = '');
-                                },
-                              )
-                            : Container(
-                                margin: const EdgeInsets.only(right: 12),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: isDark ? Colors.white10 : const Color(0xFFF1F5F9),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
-                                      ),
-                                      child: Text(
-                                        'F2',
-                                        style: GoogleFonts.plusJakartaSans(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: hintColor,
+                        child: SinglishTextField(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          showSuggestionBanner: false,
+                          showConvertBadge: false,
+                          autofocus: true,
+                          textInputAction: TextInputAction.go,
+                          onSubmitted: (v) => _handleBarcodeScan(v),
+                          onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                          onConverted: () => setState(() => _searchQuery = _searchController.text.trim()),
+                          style: GoogleFonts.notoSansSinhala(color: textColor, fontSize: 13.5),
+                          decoration: InputDecoration(
+                            hintText: l10n.searchHint,
+                            hintStyle: GoogleFonts.notoSansSinhala(color: hintColor, fontSize: 13),
+                            prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF10B981), size: 20),
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear_rounded, size: 18),
+                                    color: hintColor,
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : Container(
+                                    margin: const EdgeInsets.only(right: 12),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: isDark ? Colors.white10 : const Color(0xFFF1F5F9),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: isDark ? Colors.white12 : const Color(0xFFE2E8F0)),
+                                          ),
+                                          child: Text(
+                                            'F2',
+                                            style: GoogleFonts.plusJakartaSans(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: hintColor,
+                                            ),
+                                          ),
                                         ),
+                                      ],
+                                    ),
+                                  ),
+                            filled: true,
+                            fillColor: inputBg,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: inputBorder),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: inputBorder),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      onPressed: () => _openAddProduct(initialName: _searchQuery.isNotEmpty ? _searchQuery : null),
+                      icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                      label: Text(
+                        isUltraCompact ? '+ Product' : (isCompact ? '+ Add (F3)' : '+ Add Product (F3)'),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        elevation: 2,
+                        padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 11, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    OutlinedButton.icon(
+                      onPressed: () => _openQuickCustomItem(),
+                      icon: const Icon(Icons.flash_on_rounded, size: 16, color: Color(0xFFF59E0B)),
+                      label: Text(
+                        isUltraCompact ? '+ Custom' : (isCompact ? '+ Custom (F4)' : '+ Custom Item (F4)'),
+                        style: GoogleFonts.plusJakartaSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: isDark ? const Color(0xFFF59E0B).withValues(alpha: 0.4) : const Color(0xFFF59E0B).withValues(alpha: 0.6),
+                        ),
+                        padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 9, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    // ── View Options (Grid vs List, Column count) ──
+                    Container(
+                      height: 44,
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildViewOptionButton(
+                            icon: Icons.grid_view_rounded,
+                            label: 'Grid',
+                            showLabel: !isCompact,
+                            isSelected: _viewMode == 'grid',
+                            onTap: () => _setViewMode('grid'),
+                            isDark: isDark,
+                          ),
+                          const SizedBox(width: 2),
+                          _buildViewOptionButton(
+                            icon: Icons.view_list_rounded,
+                            label: 'List',
+                            showLabel: !isCompact,
+                            isSelected: _viewMode == 'list',
+                            onTap: () => _setViewMode('list'),
+                            isDark: isDark,
+                          ),
+                          Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            width: 1,
+                            height: 18,
+                            color: isDark ? Colors.white12 : const Color(0xFFCBD5E1),
+                          ),
+                          PopupMenuButton<int>(
+                            tooltip: 'Change Columns / Layout',
+                            offset: const Offset(0, 48),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(horizontal: isCompact ? 6 : 8, vertical: 6),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.view_column_rounded,
+                                    size: 15,
+                                    color: isDark ? Colors.white70 : const Color(0xFF475569),
+                                  ),
+                                  if (!isUltraCompact) ...[
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      isCompact
+                                          ? (_viewMode == 'grid' ? '$_gridColumns' : '$_listColumns')
+                                          : (_viewMode == 'grid' ? '$_gridColumns Col' : '$_listColumns Col'),
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.white : const Color(0xFF1E293B),
                                       ),
                                     ),
                                   ],
-                                ),
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    Icons.arrow_drop_down_rounded,
+                                    size: 16,
+                                    color: isDark ? Colors.white54 : const Color(0xFF94A3B8),
+                                  ),
+                                ],
                               ),
-                        filled: true,
-                        fillColor: inputBg,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: inputBorder),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: inputBorder),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                            ),
+                            onSelected: (cols) {
+                              if (_viewMode == 'grid') {
+                                _setGridColumns(cols);
+                              } else {
+                                _setListColumns(cols);
+                              }
+                            },
+                            itemBuilder: (_) {
+                              if (_viewMode == 'grid') {
+                                return [
+                                  _buildColumnMenuItem(3, '3 Columns (Large Cards)', _gridColumns == 3, isDark),
+                                  _buildColumnMenuItem(4, '4 Columns (Comfortable)', _gridColumns == 4, isDark),
+                                  _buildColumnMenuItem(5, '5 Columns (Standard)', _gridColumns == 5, isDark),
+                                  _buildColumnMenuItem(6, '6 Columns (Compact Grid)', _gridColumns == 6, isDark),
+                                ];
+                              } else {
+                                return [
+                                  _buildColumnMenuItem(1, '1 Column (Full Width List)', _listColumns == 1, isDark),
+                                  _buildColumnMenuItem(2, '2 Columns (Dense Split List)', _listColumns == 2, isDark),
+                                ];
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton.icon(
-                  onPressed: () => _openAddProduct(initialName: _searchQuery.isNotEmpty ? _searchQuery : null),
-                  icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-                  label: Text(
-                    '+ Add Product (F3)',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
-                    foregroundColor: Colors.white,
-                    elevation: 2,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: () => _openQuickCustomItem(),
-                  icon: const Icon(Icons.flash_on_rounded, size: 16, color: Color(0xFFF59E0B)),
-                  label: Text(
-                    '+ Custom Item (F4)',
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309),
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: isDark ? const Color(0xFFF59E0B).withValues(alpha: 0.4) : const Color(0xFFF59E0B).withValues(alpha: 0.6),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
           Expanded(
@@ -1486,54 +1633,68 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
                   );
                 }
 
+                if (_viewMode == 'list') {
+                  if (_listColumns == 2) {
+                    return GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 8,
+                        mainAxisExtent: 72,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (_, i) => _ProductListRow(
+                        product: filtered[i],
+                        isDark: isDark,
+                        onTap: () => _onProductSelected(filtered[i], isDark),
+                      ),
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) => _ProductListRow(
+                      product: filtered[i],
+                      isDark: isDark,
+                      onTap: () => _onProductSelected(filtered[i], isDark),
+                    ),
+                  );
+                }
+
+                double childAspectRatio;
+                switch (_gridColumns) {
+                  case 3:
+                    childAspectRatio = 0.82;
+                    break;
+                  case 4:
+                    childAspectRatio = 0.76;
+                    break;
+                  case 6:
+                    childAspectRatio = 0.67;
+                    break;
+                  case 5:
+                  default:
+                    childAspectRatio = 0.72;
+                    break;
+                }
+
                 return GridView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 5,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: _gridColumns,
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 10,
-                    childAspectRatio: 0.72,
+                    childAspectRatio: childAspectRatio,
                   ),
                   itemCount: filtered.length,
-                  itemBuilder: (_, i) {
-                    final product = filtered[i];
-                    return _ProductTile(
-                      product: product,
-                      isDark: isDark,
-                      onTap: () {
-                        final parsed = SinhalaSearchService.parseSearchQuery(_searchController.text);
-                        if (product.hasMultipleSellingModes || product.isVariableQuantity) {
-                          if (parsed.hasQuantitySpec && parsed.quantity != null) {
-                            ref.read(cartProvider.notifier).addProduct(
-                              product,
-                              quantity: parsed.quantity!,
-                              unit: parsed.unit,
-                              sellingMode: parsed.sellingMode,
-                            );
-                          } else {
-                            VariableQuantityDialog.show(
-                              context,
-                              product: product,
-                              isDark: isDark,
-                              onConfirmed: (qty, unit, {sellingMode, packSize, packSizeUnit, customPrice}) {
-                                ref.read(cartProvider.notifier).addProduct(
-                                  product,
-                                  quantity: qty,
-                                  unit: unit,
-                                  sellingMode: sellingMode,
-                                  packSize: packSize,
-                                  packSizeUnit: packSizeUnit,
-                                  customPrice: customPrice,
-                                );
-                              },
-                            );
-                          }
-                        } else {
-                          ref.read(cartProvider.notifier).addProduct(product);
-                        }
-                      },
-                    );
-                  },
+                  itemBuilder: (_, i) => _ProductTile(
+                    product: filtered[i],
+                    isDark: isDark,
+                    onTap: () => _onProductSelected(filtered[i], isDark),
+                  ),
                 );
               },
               loading: () =>
@@ -1541,6 +1702,116 @@ class _DesktopPosScreenState extends ConsumerState<DesktopPosScreen> {
               error: (e, _) => Center(
                   child: Text('Error loading products',
                       style: GoogleFonts.inter(color: Colors.red))),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onProductSelected(Product product, bool isDark) {
+    final parsed = SinhalaSearchService.parseSearchQuery(_searchController.text);
+    if (product.hasMultipleSellingModes || product.isVariableQuantity) {
+      if (parsed.hasQuantitySpec && parsed.quantity != null) {
+        ref.read(cartProvider.notifier).addProduct(
+          product,
+          quantity: parsed.quantity!,
+          unit: parsed.unit,
+          sellingMode: parsed.sellingMode,
+        );
+      } else {
+        VariableQuantityDialog.show(
+          context,
+          product: product,
+          isDark: isDark,
+          onConfirmed: (qty, unit, {sellingMode, packSize, packSizeUnit, customPrice}) {
+            ref.read(cartProvider.notifier).addProduct(
+              product,
+              quantity: qty,
+              unit: unit,
+              sellingMode: sellingMode,
+              packSize: packSize,
+              packSizeUnit: packSizeUnit,
+              customPrice: customPrice,
+            );
+          },
+        );
+      }
+    } else {
+      ref.read(cartProvider.notifier).addProduct(product);
+    }
+  }
+
+  Widget _buildViewOptionButton({
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required bool isDark,
+    bool showLabel = true,
+  }) {
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: isSelected
+            ? (isDark ? const Color(0xFF334155) : Colors.white)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: showLabel ? 10 : 8, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 15,
+                  color: isSelected
+                      ? const Color(0xFF10B981)
+                      : (isDark ? Colors.white54 : const Color(0xFF64748B)),
+                ),
+                if (showLabel) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected
+                          ? (isDark ? Colors.white : const Color(0xFF0F172A))
+                          : (isDark ? Colors.white54 : const Color(0xFF64748B)),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  PopupMenuItem<int> _buildColumnMenuItem(int count, String title, bool isSelected, bool isDark) {
+    return PopupMenuItem<int>(
+      value: count,
+      child: Row(
+        children: [
+          Icon(
+            isSelected ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+            size: 16,
+            color: isSelected ? const Color(0xFF10B981) : (isDark ? Colors.white38 : const Color(0xFF94A3B8)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? (isDark ? Colors.white : const Color(0xFF0F172A)) : (isDark ? Colors.white70 : const Color(0xFF334155)),
+              ),
             ),
           ),
         ],
@@ -2187,6 +2458,134 @@ class _MoreMenuButton extends ConsumerWidget {
 
 
 
+void _showProductActionSheet(BuildContext context, WidgetRef ref, Product product, bool isDark) {
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (_) => Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white24 : Colors.black12,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.add_box_rounded, color: Color(0xFF10B981), size: 20),
+            ),
+            title: Text('Add Stock / Receive Delivery', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0F172A))),
+            subtitle: Text('Receive wholesale bags (50kg), direct units, or packaged shipments', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54)),
+            onTap: () {
+              Navigator.pop(context);
+              AddStockDialog.show(context, product: product, isDark: isDark);
+            },
+          ),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.bolt_rounded, color: Colors.amber, size: 20),
+            ),
+            title: Text('Quick Price & Stock Update', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0F172A))),
+            subtitle: Text('Instantly update price, cost price, and stock levels', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54)),
+            onTap: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => _QuickStockPriceDialog(product: product, isDark: isDark),
+              );
+            },
+          ),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryBlue.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.edit_note_rounded, color: AppTheme.primaryBlue, size: 20),
+            ),
+            title: Text('Full Edit Product Details', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0F172A))),
+            subtitle: Text('Edit Sinhala name, barcodes, categories & supplier', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54)),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (_) => AddProductScreen(product: product)));
+            },
+          ),
+          if (product.trackBatches)
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.inventory_2_rounded, color: Colors.orange, size: 20),
+              ),
+              title: Text('Add / Manage Batches', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0F172A))),
+              subtitle: Text('Add expiry dates and batch lot tracking', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54)),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => AddBatchScreen(product: product)));
+              },
+            ),
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
+            ),
+            title: Text('Delete Product', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: Colors.red)),
+            onTap: () async {
+              Navigator.pop(context);
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: Text('Delete ${product.name}?'),
+                  content: const Text('Are you sure you want to delete this product?'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true && product.id != null) {
+                ref.read(productActionsProvider).deleteProduct(product.id!);
+              }
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class _ProductTile extends ConsumerWidget {
   final Product product;
   final VoidCallback onTap;
@@ -2199,131 +2598,7 @@ class _ProductTile extends ConsumerWidget {
   });
 
   void _showActionSheet(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E293B) : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 36,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.white24 : Colors.black12,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.add_box_rounded, color: Color(0xFF10B981), size: 20),
-              ),
-              title: Text('Add Stock / Receive Delivery', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-              subtitle: Text('Receive wholesale bags (50kg), direct units, or packaged shipments', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54)),
-              onTap: () {
-                Navigator.pop(context);
-                AddStockDialog.show(context, product: product, isDark: isDark);
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.bolt_rounded, color: Colors.amber, size: 20),
-              ),
-              title: Text('Quick Price & Stock Update', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-              subtitle: Text('Instantly update price, cost price, and stock levels', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54)),
-              onTap: () {
-                Navigator.pop(context);
-                showDialog(
-                  context: context,
-                  builder: (_) => _QuickStockPriceDialog(product: product, isDark: isDark),
-                );
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryBlue.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.edit_note_rounded, color: AppTheme.primaryBlue, size: 20),
-              ),
-              title: Text('Full Edit Product Details', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-              subtitle: Text('Edit Sinhala name, barcodes, categories & supplier', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54)),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => AddProductScreen(product: product)));
-              },
-            ),
-            if (product.trackBatches)
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.inventory_2_rounded, color: Colors.orange, size: 20),
-                ),
-                title: Text('Add / Manage Batches', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-                subtitle: Text('Add expiry dates and batch lot tracking', style: GoogleFonts.inter(fontSize: 12, color: isDark ? Colors.white54 : Colors.black54)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => AddBatchScreen(product: product)));
-                },
-              ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.delete_outline_rounded, color: Colors.red, size: 20),
-              ),
-              title: Text('Delete Product', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700, color: Colors.red)),
-              onTap: () async {
-                Navigator.pop(context);
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: Text('Delete ${product.name}?'),
-                    content: const Text('Are you sure you want to delete this product?'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text('Delete', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirm == true && product.id != null) {
-                  ref.read(productActionsProvider).deleteProduct(product.id!);
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    _showProductActionSheet(context, ref, product, isDark);
   }
 
   @override
@@ -2332,8 +2607,6 @@ class _ProductTile extends ConsumerWidget {
     final tileBg = isDark ? const Color(0xFF1E293B) : Colors.white;
     final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
     final titleColor = isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A);
-    final placeholderBg = isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF8FAFC);
-    final iconColor = isDark ? Colors.white24 : const Color(0xFF94A3B8);
 
     final secondaryName = product.nameSinhala?.isNotEmpty == true && product.nameSinhala != product.name
         ? product.nameSinhala!
@@ -2381,18 +2654,18 @@ class _ProductTile extends ConsumerWidget {
                             width: double.infinity,
                             height: double.infinity,
                             fit: BoxFit.cover,
-                            placeholder: Container(
-                              color: placeholderBg,
-                              child: Center(
-                                child: Icon(Icons.shopping_bag_outlined, color: iconColor, size: 28),
-                              ),
+                            category: product.category,
+                            productName: product.name,
+                            placeholder: CategoryProductImage(
+                              category: product.category,
+                              productName: product.name,
+                              isDark: isDark,
                             ),
                           )
-                        : Container(
-                            color: placeholderBg,
-                            child: Center(
-                              child: Icon(Icons.shopping_bag_outlined, color: iconColor, size: 28),
-                            ),
+                        : CategoryProductImage(
+                            category: product.category,
+                            productName: product.name,
+                            isDark: isDark,
                           ),
                   ),
                   // Clickable stock badge
@@ -2506,14 +2779,19 @@ class _ProductTile extends ConsumerWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        Formatters.currency(product.price),
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                          color: const Color(0xFF10B981),
+                      Flexible(
+                        child: Text(
+                          Formatters.currency(product.price),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF10B981),
+                          ),
                         ),
                       ),
+                      const SizedBox(width: 4),
                       Text(
                         '/ ${product.unit}',
                         style: GoogleFonts.plusJakartaSans(
@@ -2530,6 +2808,304 @@ class _ProductTile extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ProductListRow extends ConsumerWidget {
+  final Product product;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _ProductListRow({
+    required this.product,
+    this.isDark = true,
+    required this.onTap,
+  });
+
+  void _showActionSheet(BuildContext context, WidgetRef ref) {
+    _showProductActionSheet(context, ref, product, isDark);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tileBg = isDark ? const Color(0xFF1E293B) : Colors.white;
+    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final titleColor = isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A);
+    final subColor = isDark ? Colors.white54 : const Color(0xFF64748B);
+    final hasImage = product.imageUrl != null && product.imageUrl!.trim().isNotEmpty;
+
+    final secondaryName = product.nameSinhala?.isNotEmpty == true && product.nameSinhala != product.name
+        ? product.nameSinhala!
+        : (product.nameEnglish?.isNotEmpty == true && product.nameEnglish != product.name
+            ? product.nameEnglish!
+            : null);
+
+    final isMulti = product.hasMultipleSellingModes;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isCompact = constraints.maxWidth < 520;
+        final isVeryCompact = constraints.maxWidth < 340;
+
+        return InkWell(
+          onTap: onTap,
+          onLongPress: () => _showActionSheet(context, ref),
+          onSecondaryTap: () {
+            showDialog(
+              context: context,
+              builder: (_) => _QuickStockPriceDialog(product: product, isDark: isDark),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: isCompact ? 8 : 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: tileBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: borderColor, width: 1.1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Thumbnail Image with Category fallback
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(9),
+                  child: SizedBox(
+                    width: isVeryCompact ? 38 : (isCompact ? 42 : 48),
+                    height: isVeryCompact ? 38 : (isCompact ? 42 : 48),
+                    child: hasImage
+                        ? CachedProductImage(
+                            imageUrl: product.imageUrl!,
+                            width: isVeryCompact ? 38 : (isCompact ? 42 : 48),
+                            height: isVeryCompact ? 38 : (isCompact ? 42 : 48),
+                            fit: BoxFit.cover,
+                            category: product.category,
+                            productName: product.name,
+                            placeholder: CategoryProductImage(
+                              category: product.category,
+                              productName: product.name,
+                              width: isVeryCompact ? 38 : (isCompact ? 42 : 48),
+                              height: isVeryCompact ? 38 : (isCompact ? 42 : 48),
+                              showLabel: false,
+                              isDark: isDark,
+                            ),
+                          )
+                        : CategoryProductImage(
+                            category: product.category,
+                            productName: product.name,
+                            width: isVeryCompact ? 38 : (isCompact ? 42 : 48),
+                            height: isVeryCompact ? 38 : (isCompact ? 42 : 48),
+                            showLabel: false,
+                            isDark: isDark,
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Product Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              product.sinhalaOrName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.notoSansSinhala(
+                                fontSize: isCompact ? 12.5 : 13,
+                                fontWeight: FontWeight.bold,
+                                color: titleColor,
+                              ),
+                            ),
+                          ),
+                          if (isMulti) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                              ),
+                              child: Text(
+                                PosL10n.of(ref.watch(settingsProvider).languageCode).multiModeBadge,
+                                style: GoogleFonts.notoSansSinhala(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF10B981),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          if (product.category != null && product.category!.isNotEmpty)
+                            Flexible(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: CategoryIconUtil.getColorForCategory(product.category).withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  context.getLocalizedCategory(product.category!),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: CategoryIconUtil.getColorForCategory(product.category),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (secondaryName != null && !isCompact) ...[
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                secondaryName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: subColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                          if (product.baseBarcode?.isNotEmpty == true && constraints.maxWidth > 580) ...[
+                            const SizedBox(width: 6),
+                            Icon(Icons.qr_code_2_rounded, size: 11, color: subColor),
+                            const SizedBox(width: 2),
+                            Text(
+                              product.baseBarcode!,
+                              style: GoogleFonts.robotoMono(fontSize: 9.5, color: subColor),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // Clickable Stock Badge
+                InkWell(
+                  onTap: () => AddStockDialog.show(context, product: product, isDark: isDark),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: isCompact ? 5 : 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppTheme.stockStatusColor(product.stockStatus).withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.stockStatusColor(product.stockStatus),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          product.formattedStock,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white70 : const Color(0xFF334155),
+                          ),
+                        ),
+                        if (!isCompact) ...[
+                          const SizedBox(width: 2),
+                          Icon(Icons.add_rounded, color: AppTheme.stockStatusColor(product.stockStatus), size: 12),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(width: isCompact ? 6 : 12),
+
+                // Price & Unit
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      Formatters.currency(product.price),
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: isCompact ? 12.5 : 13.5,
+                        fontWeight: FontWeight.w900,
+                        color: const Color(0xFF10B981),
+                      ),
+                    ),
+                    Text(
+                      '/ ${product.unit}',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                        color: subColor,
+                      ),
+                    ),
+                  ],
+                ),
+                if (!isCompact) ...[
+                  const SizedBox(width: 6),
+                  // Quick Add Action Icon
+                  Material(
+                    color: const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: onTap,
+                      child: const Padding(
+                        padding: EdgeInsets.all(5),
+                        child: Icon(Icons.add_shopping_cart_rounded, color: Color(0xFF10B981), size: 15),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 2),
+
+                // Options Action Icon
+                Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _showActionSheet(context, ref),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(Icons.more_vert_rounded, color: subColor, size: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -2577,25 +3153,35 @@ class _CartItemTile extends ConsumerWidget {
                     width: 44,
                     height: 44,
                     fit: BoxFit.cover,
-                    placeholder: Container(
-                      color: imgBg,
-                      child: Icon(
-                        item.itemType == 'service' ? Icons.build_rounded : Icons.shopping_bag_outlined,
-                        color: iconColor,
-                        size: 20,
-                      ),
+                    category: item.product?.category,
+                    productName: item.itemName,
+                    placeholder: CategoryProductImage(
+                      category: item.product?.category,
+                      productName: item.itemName,
+                      width: 44,
+                      height: 44,
+                      showLabel: false,
+                      isDark: isDark,
                     ),
                   )
-                : Container(
-                    color: imgBg,
-                    child: Icon(
-                      item.itemType == 'service'
-                          ? Icons.build_rounded
-                          : (item.isQuickItem ? Icons.flash_on_rounded : Icons.shopping_bag_outlined),
-                      color: iconColor,
-                      size: 20,
-                    ),
-                  ),
+                : (item.itemType == 'service'
+                    ? Container(
+                        color: imgBg,
+                        child: Icon(Icons.build_rounded, color: iconColor, size: 20),
+                      )
+                    : (item.isQuickItem
+                        ? Container(
+                            color: imgBg,
+                            child: Icon(Icons.flash_on_rounded, color: iconColor, size: 20),
+                          )
+                        : CategoryProductImage(
+                            category: item.product?.category,
+                            productName: item.itemName,
+                            width: 44,
+                            height: 44,
+                            showLabel: false,
+                            isDark: isDark,
+                          ))),
           ),
         ),
         Expanded(

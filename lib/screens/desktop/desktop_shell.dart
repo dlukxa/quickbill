@@ -12,6 +12,7 @@ import '../../providers/employee_provider.dart';
 import '../../providers/preference_provider.dart';
 import '../../services/cash_drawer_service.dart';
 import '../../services/sync_service.dart';
+import '../../services/startup_logger.dart';
 import '../../services/windows_update_service.dart';
 import '../../widgets/update_dialog.dart';
 import '../../utils/pos_l10n.dart';
@@ -56,15 +57,19 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   @override
   void initState() {
     super.initState();
+    StartupLogger.log('DesktopShell: Dashboard initialization started');
     _loadSidebarPreferences();
 
     // Ensure cloud sync is running on desktop
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         ref.read(syncServiceProvider).startSync();
+        StartupLogger.log('DesktopShell: SyncService background sync triggered');
       } catch (e) {
         debugPrint('Desktop background sync startup: $e');
+        StartupLogger.log('DesktopShell: SyncService startup notice: $e');
       }
+      StartupLogger.log('DesktopShell: Dashboard navigation ready (initial view: POS)');
     });
 
     // Check for Windows desktop updates in background

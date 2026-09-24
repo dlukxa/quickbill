@@ -297,7 +297,8 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
         side: BorderSide(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0), width: 1.5),
       ),
       child: Container(
-        width: 540,
+        width: 550,
+        constraints: const BoxConstraints(maxWidth: 550),
         padding: const EdgeInsets.all(28),
         child: SingleChildScrollView(
           child: Column(
@@ -402,7 +403,7 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
                         borderRadius: BorderRadius.circular(10),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
-                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
                           decoration: BoxDecoration(
                             gradient: _restockMode == 'direct'
                                 ? const LinearGradient(
@@ -422,19 +423,24 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.scale_rounded,
                                 size: 16,
                                 color: _restockMode == 'direct' ? Colors.white : subColor,
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                PosL10n.of(ref.watch(settingsProvider).languageCode).directQuantityMode,
-                                style: GoogleFonts.notoSansSinhala(
-                                  fontSize: 13,
-                                  fontWeight: _restockMode == 'direct' ? FontWeight.w700 : FontWeight.w600,
-                                  color: _restockMode == 'direct' ? Colors.white : subColor,
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  PosL10n.of(ref.watch(settingsProvider).languageCode).directQuantityMode,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.notoSansSinhala(
+                                    fontSize: 12.5,
+                                    fontWeight: _restockMode == 'direct' ? FontWeight.w700 : FontWeight.w600,
+                                    color: _restockMode == 'direct' ? Colors.white : subColor,
+                                  ),
                                 ),
                               ),
                             ],
@@ -448,7 +454,7 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
                         borderRadius: BorderRadius.circular(10),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 180),
-                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
                           decoration: BoxDecoration(
                             gradient: _restockMode == 'package'
                                 ? const LinearGradient(
@@ -468,19 +474,24 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 Icons.inventory_2_rounded,
                                 size: 16,
                                 color: _restockMode == 'package' ? Colors.white : subColor,
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                PosL10n.of(ref.watch(settingsProvider).languageCode).wholesaleDeliveryMode,
-                                style: GoogleFonts.notoSansSinhala(
-                                  fontSize: 13,
-                                  fontWeight: _restockMode == 'package' ? FontWeight.w700 : FontWeight.w600,
-                                  color: _restockMode == 'package' ? Colors.white : subColor,
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  PosL10n.of(ref.watch(settingsProvider).languageCode).wholesaleDeliveryMode,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.notoSansSinhala(
+                                    fontSize: 12.5,
+                                    fontWeight: _restockMode == 'package' ? FontWeight.w700 : FontWeight.w600,
+                                    color: _restockMode == 'package' ? Colors.white : subColor,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1030,12 +1041,15 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
                         color: const Color(0xFF10B981),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        _showCostDetails ? 'Hide Cost & Supplier Information' : 'Attach Purchase Cost, Supplier & Invoice Note (Optional)',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF10B981),
+                      Expanded(
+                        child: Text(
+                          _showCostDetails ? 'Hide Cost & Supplier Information' : 'Attach Purchase Cost, Supplier & Invoice Note (Optional)',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF10B981),
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -1148,12 +1162,17 @@ class _AddStockDialogState extends ConsumerState<AddStockDialog> {
                             ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
                             : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   const Icon(Icons.add_shopping_cart_rounded, size: 20),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    PosL10n.of(ref.watch(settingsProvider).languageCode).confirmAndAddStock,
-                                    style: GoogleFonts.notoSansSinhala(fontSize: 15, fontWeight: FontWeight.w800),
+                                  Flexible(
+                                    child: Text(
+                                      PosL10n.of(ref.watch(settingsProvider).languageCode).confirmAndAddStock,
+                                      style: GoogleFonts.notoSansSinhala(fontSize: 15, fontWeight: FontWeight.w800),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                 ],
                               ),

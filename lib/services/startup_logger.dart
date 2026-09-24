@@ -34,6 +34,32 @@ class StartupLogger {
     return _resolvedLogPath!;
   }
 
+  /// Logs comprehensive hardware, OS, and runtime diagnostic metadata at application launch.
+  /// Strictly omits sensitive user data, passwords, and private financial tokens.
+  static void logSystemInfo({required String version}) {
+    log('====================================================');
+    log('QuickBill POS Application Launch - Version $version');
+    log('====================================================');
+    try {
+      log('Platform: ${Platform.operatingSystem} (${Platform.operatingSystemVersion})');
+      log('Dart Runtime: ${Platform.version}');
+      log('Executable: ${Platform.resolvedExecutable}');
+      if (Platform.isWindows) {
+        final cpuId = Platform.environment['PROCESSOR_IDENTIFIER'] ?? 'Unknown CPU';
+        final cpuArch = Platform.environment['PROCESSOR_ARCHITECTURE'] ?? 'x64';
+        final cpuCores = Platform.environment['NUMBER_OF_PROCESSORS'] ?? 'Unknown cores';
+        log('CPU Architecture: $cpuArch | Cores: $cpuCores');
+        log('CPU Identifier: $cpuId');
+        log('Renderer / Graphics Engine: Flutter Windows Engine (Direct3D 11/12 via ANGLE / Skia)');
+      } else {
+        log('Renderer: Flutter Standard Platform Engine');
+      }
+      log('Startup diagnostic log destination: ${getLogFilePath()}');
+    } catch (e) {
+      log('Notice retrieving system information: $e');
+    }
+  }
+
   /// Logs a milestone or diagnostic step.
   static void log(String message) {
     final timestamp = DateTime.now().toIso8601String();

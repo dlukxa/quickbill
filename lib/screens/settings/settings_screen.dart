@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/printing_service.dart';
 import '../../services/export_service.dart';
-import '../../services/import_service.dart';
 import '../../services/backup_service.dart';
 import '../../services/sync_service.dart';
 import '../auth/auth_wrapper.dart';
@@ -42,6 +40,7 @@ import '../../widgets/animate_in.dart';
 import '../../widgets/cloud_backups_sheet.dart';
 import '../desktop/link_to_pc_screen.dart';
 import 'subscription_settings_screen.dart';
+import '../stock/csv_import_wizard_sheet.dart';
 
 ImageProvider _getShopLogoImageProvider(String urlOrPath) {
   final trimmed = urlOrPath.trim();
@@ -1259,48 +1258,12 @@ class _DataSettingsPage extends ConsumerWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  leading: const Icon(Icons.publish),
+                  leading: const Icon(Icons.publish_rounded),
                   title: Text(AppLocalizations.of(context)!.importProducts),
                   subtitle: Text(AppLocalizations.of(context)!.importProductsSubtitle),
-                  trailing: const Icon(Icons.add, color: AppTheme.primaryGreen),
+                  trailing: const Icon(Icons.auto_awesome_rounded, color: AppTheme.primaryGreen),
                   onTap: () async {
-                    final branchId = ref.read(branchProvider).selectedBranch?.id ?? 1;
-                    
-                    FilePickerResult? result = await FilePicker.platform.pickFiles(
-                      type: FileType.custom,
-                      allowedExtensions: ['csv'],
-                    );
-
-                    if (result == null || result.files.single.path == null) return;
-
-                    if (context.mounted) {
-                      _showLoadingDialog(context, '${AppLocalizations.of(context)!.importProducts}...');
-                    }
-
-                    int count = 0;
-                    try {
-                      count = await ImportService.instance.importProductsFromPath(
-                        branchId,
-                        result.files.single.path!,
-                      );
-                    } finally {
-                      if (context.mounted) Navigator.pop(context);
-                    }
-
-                    if (count > 0) {
-                      ref.invalidate(productsProvider);
-                      ref.invalidate(lowStockProductsProvider);
-                      // Trigger a local push sync in background to upload imported products to server
-                      SyncService.instance.pushLocalChanges();
-                    }
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(AppLocalizations.of(context)!.importSuccess(count.toString())),
-                          backgroundColor: AppTheme.primaryGreen,
-                        ),
-                      );
-                    }
+                    await CsvImportWizardSheet.show(context);
                   },
                 ),
               ],

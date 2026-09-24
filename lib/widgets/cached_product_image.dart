@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/local_media_storage_service.dart';
 
+import 'category_product_image.dart';
+
 /// Fast, offline-first image widget that stores and reads product images
 /// directly from local device storage with seamless fallback.
 class CachedProductImage extends StatefulWidget {
@@ -9,7 +11,9 @@ class CachedProductImage extends StatefulWidget {
   final double width;
   final double height;
   final BoxFit fit;
-  final Widget placeholder;
+  final Widget? placeholder;
+  final String? category;
+  final String? productName;
 
   const CachedProductImage({
     super.key,
@@ -17,7 +21,9 @@ class CachedProductImage extends StatefulWidget {
     this.width = 40,
     this.height = 40,
     this.fit = BoxFit.cover,
-    required this.placeholder,
+    this.placeholder,
+    this.category,
+    this.productName,
   });
 
   @override
@@ -84,8 +90,19 @@ class _CachedProductImageState extends State<CachedProductImage> {
     }
   }
 
+  Widget get _fallbackPlaceholder =>
+      widget.placeholder ??
+      CategoryProductImage(
+        category: widget.category,
+        productName: widget.productName,
+        width: widget.width,
+        height: widget.height,
+      );
+
   @override
   Widget build(BuildContext context) {
+    final fallback = _fallbackPlaceholder;
+
     if (_localFile != null && _localFile!.existsSync()) {
       return Image.file(
         _localFile!,
@@ -93,7 +110,7 @@ class _CachedProductImageState extends State<CachedProductImage> {
         height: widget.height,
         fit: widget.fit,
         gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) => widget.placeholder,
+        errorBuilder: (context, error, stackTrace) => fallback,
       );
     }
 
@@ -119,10 +136,10 @@ class _CachedProductImageState extends State<CachedProductImage> {
         height: widget.height,
         fit: widget.fit,
         gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) => widget.placeholder,
+        errorBuilder: (context, error, stackTrace) => fallback,
       );
     }
 
-    return widget.placeholder;
+    return fallback;
   }
 }

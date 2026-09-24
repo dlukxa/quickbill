@@ -29,6 +29,7 @@ import '../../services/sinhala_search_service.dart';
 import '../../widgets/add_stock_dialog.dart';
 import '../../providers/expiry_provider.dart';
 import '../inventory/expiry_management_screen.dart';
+import 'csv_import_wizard_sheet.dart';
 
 class StockScreen extends ConsumerStatefulWidget {
   const StockScreen({super.key});
@@ -394,6 +395,11 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                 ),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.file_upload_outlined),
+            tooltip: 'Import CSV Inventory',
+            onPressed: () => CsvImportWizardSheet.show(context),
           ),
           if (ref.watch(currentEmployeeProvider).value?.permissions.canManageInventory ?? false)
             IconButton(

@@ -11,11 +11,14 @@ void main() {
   late ReturnService returnService;
 
   setUpAll(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   });
 
   setUp(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    await DatabaseService.instance.close();
     final dbPath = await databaseFactory.getDatabasesPath();
     final path = join(dbPath, 'quickbill.db');
     await databaseFactory.deleteDatabase(path);

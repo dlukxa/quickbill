@@ -1,20 +1,12 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 import 'config/theme.dart';
-import 'screens/home/home_screen.dart';
-import 'screens/auth/login_screen.dart';
 import 'services/auth_service.dart';
 import 'providers/preference_provider.dart';
-import 'providers/employee_provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'generated/l10n/app_localizations.dart';
-import 'firebase_options.dart';
 import 'screens/auth/auth_wrapper.dart';
-import 'services/notification_service.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'widgets/gradient_button.dart';
 import 'screens/startup/startup_loading_screen.dart';
 import 'screens/startup/language_selection_screen.dart';
 import 'utils/fallback_localizations.dart';
@@ -26,12 +18,9 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqlite3/open.dart';
 import 'dart:ffi';
 
-void _logErrorToFile(dynamic error, dynamic stack) {
-  StartupLogger.logError('Runtime', error, stack is StackTrace ? stack : null);
-}
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  StartupLogger.logSystemInfo(version: '1.0.6.11');
   StartupLogger.log('QuickBill POS engine entry: main() initialized');
 
   // Protect against fatal crashes from uncaught errors
@@ -79,8 +68,8 @@ void main() async {
     };
 
   runApp(
-    RestartWidget(
-      child: const ProviderScope(
+    const RestartWidget(
+      child: ProviderScope(
         child: QuickBillLoaderApp(),
       ),
     ),

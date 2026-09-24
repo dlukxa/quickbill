@@ -21,6 +21,7 @@ import 'employee_reports_screen.dart';
 import 'analytics_dashboard_screen.dart';
 import 'peak_hours_screen.dart';
 import 'vat_report_screen.dart';
+import 'category_dashboard_screen.dart';
 
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
@@ -322,6 +323,12 @@ class ReportsScreen extends ConsumerWidget {
                   icon: Icons.inventory, color: AppTheme.primaryPurple,
                   title: l10n.inventoryAudit, subtitle: l10n.inventoryAuditDesc,
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const InventoryReportScreen())),
+                ),
+                _PremiumReportTile(
+                  icon: Icons.category_rounded, color: const Color(0xFF2563EB),
+                  title: 'Category Intelligence Dashboard',
+                  subtitle: 'Stock valuation, sales share, margins & stock health by category',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CategoryDashboardScreen())),
                 ),
                 _PremiumReportTile(
                   icon: Icons.settings_backup_restore, color: AppTheme.errorRed,

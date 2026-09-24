@@ -375,11 +375,12 @@ class _SinglishTextFieldState extends State<SinglishTextField> {
         isDark: isDark,
       );
       if (effectiveSuffix != null) {
-        effectiveSuffix = FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerRight,
+        effectiveSuffix = SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
               badge,
               effectiveSuffix,
@@ -397,7 +398,7 @@ class _SinglishTextFieldState extends State<SinglishTextField> {
       decoration: widget.decoration.copyWith(
         suffixIcon: effectiveSuffix,
         suffixIconConstraints: widget.decoration.suffixIconConstraints ??
-            const BoxConstraints(minWidth: 40, maxWidth: 120, minHeight: 36, maxHeight: 48),
+            const BoxConstraints(minWidth: 40, maxWidth: 240, minHeight: 36, maxHeight: 48),
       ),
       keyboardType: widget.keyboardType,
       textInputAction: widget.textInputAction,

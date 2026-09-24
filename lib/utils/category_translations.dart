@@ -30,6 +30,8 @@ class CategoryTranslations {
       'Gifts & Crafts': 'තෑගි සහ අත්කම්',
       'Services': 'සේවා',
       'Other': 'වෙනත්',
+      'General': 'පොදු / වෙනත්',
+      'Uncategorized': 'වර්ගීකරණය නොකළ',
 
       // Food & Grocery subs
       'Rice & Grains': 'සහල් සහ ධාන්‍ය',

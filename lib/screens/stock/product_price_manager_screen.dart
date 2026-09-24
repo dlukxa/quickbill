@@ -13,6 +13,7 @@ import '../../widgets/app_card.dart';
 import '../../widgets/add_stock_dialog.dart';
 import '../../widgets/sinhala_transliteration_input.dart';
 import 'add_product_screen.dart';
+import '../../utils/l10n_extensions.dart';
 
 /// Central Product, Price, Unit & Stock Management Screen.
 /// Optimized for fast desktop and tablet shop operations with inline edits and price history.
@@ -411,7 +412,10 @@ class _ProductPriceManagerScreenState extends ConsumerState<ProductPriceManagerS
                     const SizedBox(width: 12),
                     DropdownButton<String>(
                       value: _selectedCategory,
-                      items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                      items: categories.map((c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(c == 'All' ? 'All Categories' : context.getLocalizedCategory(c)),
+                      )).toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedCategory = val);
                       },

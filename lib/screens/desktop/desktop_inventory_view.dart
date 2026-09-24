@@ -15,6 +15,8 @@ import '../stock/product_price_manager_screen.dart';
 import '../stock/archived_products_screen.dart';
 import '../../providers/expiry_provider.dart';
 import '../inventory/expiry_management_screen.dart';
+import '../stock/csv_import_wizard_sheet.dart';
+import '../../utils/l10n_extensions.dart';
 
 class DesktopInventoryView extends ConsumerStatefulWidget {
   const DesktopInventoryView({super.key});
@@ -290,33 +292,36 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                                   color: textPrimary,
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryGreen.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.table_chart_rounded,
-                                      size: 14,
-                                      color: AppTheme.primaryGreen,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'Excel Edit Mode',
-                                      style: GoogleFonts.inter(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.bold,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryGreen.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.table_chart_rounded,
+                                        size: 14,
                                         color: AppTheme.primaryGreen,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Excel Edit Mode',
+                                        style: GoogleFonts.inter(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppTheme.primaryGreen,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -418,6 +423,11 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                               builder: (_) => const ExpiryManagementScreen(),
                             ),
                           ),
+                        ),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.file_upload_outlined, size: 16),
+                          label: const Text('Import CSV'),
+                          onPressed: () => CsvImportWizardSheet.show(context),
                         ),
                         ElevatedButton.icon(
                           icon: const Icon(Icons.add_rounded, size: 18),
@@ -571,7 +581,10 @@ class _DesktopInventoryViewState extends ConsumerState<DesktopInventoryView> {
                             ),
                             ...sortedCategories.map((c) => DropdownMenuItem<String?>(
                                   value: c,
-                                  child: Text(c, overflow: TextOverflow.ellipsis),
+                                  child: Text(
+                                    context.getLocalizedCategory(c),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 )),
                           ],
                           onChanged: (val) => setState(() {

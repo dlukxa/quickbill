@@ -1,6 +1,6 @@
 ; QuickBill POS - Inno Setup Installer Script
 #define MyAppName "QuickBill POS"
-#define MyAppVersion "1.0.9"
+#define MyAppVersion "1.0.6.11"
 #define MyAppPublisher "QuickBill POS Solutions"
 #define MyAppURL "https://quickbill.lk"
 #define MyAppExeName "quickbill.exe"
@@ -17,7 +17,7 @@ DefaultDirName={autopf}\{#MyAppName}
 ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 OutputDir=..\..\build\windows_installer
-OutputBaseFilename=QuickBill_Setup
+OutputBaseFilename=QuickBill-Setup-1.0.6.11
 SetupIconFile=..\runner\resources\app_icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -37,7 +37,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; Main Flutter Windows Release Application Files
 Source: "..\..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Bundled Visual C++ 2015-2022 Redistributable
-Source: "..\..\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "..\..\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -45,6 +45,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilen
 
 [Run]
 ; Silently install or verify Microsoft Visual C++ 2015-2022 Runtime
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /passive /norestart"; StatusMsg: "Configuring Microsoft Visual C++ Runtime and System Components..."; Flags: waituntilterminated
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /passive /norestart"; StatusMsg: "Configuring Microsoft Visual C++ Runtime and System Components..."; Flags: waituntilterminated; Check: FileExists(ExpandConstant('{tmp}\vc_redist.x64.exe'))
 ; Launch QuickBill POS at the end of setup (runs in both interactive and silent auto-updates)
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; WorkingDir: "{app}"; Flags: nowait postinstall

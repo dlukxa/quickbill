@@ -5,9 +5,14 @@ class VersionUtils {
     if (v.startsWith('v') || v.startsWith('V')) {
       v = v.substring(1);
     }
-    // Remove build metadata (e.g., "1.0.7+11" -> "1.0.7")
+    // Convert build metadata to dot notation so sub-version is preserved (e.g., "1.0.6+11" -> "1.0.6.11")
     if (v.contains('+')) {
-      v = v.split('+').first;
+      final parts = v.split('+');
+      if (parts.length >= 2 && parts[1].isNotEmpty) {
+        v = '${parts[0]}.${parts[1]}';
+      } else {
+        v = parts[0];
+      }
     }
     return v;
   }

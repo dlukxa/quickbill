@@ -92,6 +92,52 @@ final inventoryAuditProvider = FutureProvider<Map<String, dynamic>>((ref) async 
   return await DatabaseService.instance.getInventoryAudit(branchId);
 });
 
+/// Provider for Inventory Category Breakdown
+final inventoryCategoryBreakdownProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final isConsolidated = ref.watch(isConsolidatedProvider);
+  final branchId = isConsolidated ? 0 : (ref.watch(branchProvider).selectedBranch?.id ?? 1);
+  return await DatabaseService.instance.getInventoryCategoryBreakdown(branchId);
+});
+
+/// Provider for Comprehensive Category Analytics Dashboard (Stock + Health + Sales + Profitability)
+final categoryAnalyticsDashboardProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final range = ref.watch(reportDateRangeProvider);
+  final isConsolidated = ref.watch(isConsolidatedProvider);
+  final branchId = isConsolidated ? 0 : (ref.watch(branchProvider).selectedBranch?.id ?? 1);
+  return await DatabaseService.instance.getComprehensiveCategoryAnalytics(
+    branchId,
+    startDate: range.start,
+    endDate: range.end,
+  );
+});
+
+/// Family Provider for Product Drilldown in a Selected Category
+final categoryProductsDrilldownProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, category) async {
+  final range = ref.watch(reportDateRangeProvider);
+  final isConsolidated = ref.watch(isConsolidatedProvider);
+  final branchId = isConsolidated ? 0 : (ref.watch(branchProvider).selectedBranch?.id ?? 1);
+  return await DatabaseService.instance.getCategoryProductsDetailed(
+    branchId,
+    category,
+    startDate: range.start,
+    endDate: range.end,
+  );
+});
+
+/// Provider for Dead / Slow Moving Stock Analysis
+final deadStockAnalysisProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final isConsolidated = ref.watch(isConsolidatedProvider);
+  final branchId = isConsolidated ? 0 : (ref.watch(branchProvider).selectedBranch?.id ?? 1);
+  return await DatabaseService.instance.getDeadStockAnalysis(branchId);
+});
+
+/// Provider for Expiring Batches Risk Analysis
+final expiringStockRiskProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final isConsolidated = ref.watch(isConsolidatedProvider);
+  final branchId = isConsolidated ? 0 : (ref.watch(branchProvider).selectedBranch?.id ?? 1);
+  return await DatabaseService.instance.getExpiringStockRisk(branchId);
+});
+
 /// Provider for top selling products
 final topProductsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final range = ref.watch(reportDateRangeProvider);
@@ -156,7 +202,7 @@ final inventoryAlertsProvider = FutureProvider<List<InventoryAlert>>((ref) async
           id: alertId,
           type: AlertType.lowStock,
           title: 'Low Stock: ${p.name}',
-          subtitle: '${p.calculatedStock} remaining (Threshold: ${p.minStock ?? "N/A"})',
+          subtitle: '${p.calculatedStock} remaining (Threshold: ${p.minStock})',
           productId: p.id!,
         ));
       }

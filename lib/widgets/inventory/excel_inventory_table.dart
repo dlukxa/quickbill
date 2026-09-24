@@ -12,6 +12,7 @@ import '../../providers/product_provider.dart';
 import '../../utils/category_constants.dart';
 import '../../utils/formatters.dart';
 import '../../utils/pos_l10n.dart';
+import '../../utils/l10n_extensions.dart';
 import '../add_stock_dialog.dart';
 import '../cached_product_image.dart';
 import '../../screens/stock/add_product_screen.dart';
@@ -875,10 +876,8 @@ class _ExcelInventoryTableState extends ConsumerState<ExcelInventoryTable> {
                                         child: CachedProductImage(
                                           imageUrl: product.imageUrl ?? '',
                                           fit: BoxFit.cover,
-                                          placeholder: Container(
-                                            color: isDark ? Colors.white10 : const Color(0xFFE2E8F0),
-                                            child: const Icon(Icons.inventory_2_outlined, size: 16),
-                                          ),
+                                          category: product.category,
+                                          productName: product.name,
                                         ),
                                       ),
                                     ),
@@ -1251,16 +1250,16 @@ class _ExcelInventoryTableState extends ConsumerState<ExcelInventoryTable> {
             isDense: true,
             isExpanded: true,
             icon: const Icon(Icons.arrow_drop_down, size: 16),
-            hint: Text('General', style: TextStyle(fontSize: 11.5, color: textSecondary)),
+            hint: Text(context.getLocalizedCategory('General'), style: TextStyle(fontSize: 11.5, color: textSecondary)),
             items: [
-              const DropdownMenuItem<String?>(
+              DropdownMenuItem<String?>(
                 value: null,
-                child: Text('General', style: TextStyle(fontSize: 11.5)),
+                child: Text(context.getLocalizedCategory('General'), style: const TextStyle(fontSize: 11.5)),
               ),
               ...categories.map((c) => DropdownMenuItem<String?>(
                     value: c,
                     child: Text(
-                      c,
+                      context.getLocalizedCategory(c),
                       style: const TextStyle(fontSize: 11.5),
                       overflow: TextOverflow.ellipsis,
                     ),

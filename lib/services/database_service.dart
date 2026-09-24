@@ -33,6 +33,7 @@ import '../models/price_history.dart';
 import '../models/stock_expiry_item.dart';
 import '../utils/tax_calculator.dart';
 import 'sinhala_search_service.dart';
+import 'startup_logger.dart';
 
 class DatabaseService {
   static Database? _database;
@@ -314,6 +315,8 @@ class DatabaseService {
     }
     final dbPath = await databaseFactory.getDatabasesPath();
     final path = join(dbPath, 'quickbill.db');
+    StartupLogger.log('DatabaseService: Initializing SQLite database...');
+    StartupLogger.log('DatabaseService: Database file path: $path');
 
     return await openDatabase(
       path,
@@ -336,6 +339,7 @@ class DatabaseService {
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async {
+        StartupLogger.log('DatabaseService: Database opened successfully at: $path (version: ${await db.getVersion()})');
         // Run a quick integrity check on startup to detect corruption early.
         // This catches damage from battery death, OS force-kills, or storage errors
         // before the app silently operates on corrupted data.
@@ -432,6 +436,7 @@ class DatabaseService {
   }
 
   Future<void> _onCreate(Database db, int version) async {
+    StartupLogger.log('DatabaseService: Creating initial database schema (v$version)');
     // Sync queue table first to allow seeding other tables to log to it
     await db.execute('''
       CREATE TABLE sync_queue (
@@ -1024,6 +1029,7 @@ class DatabaseService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    StartupLogger.log('DatabaseService: Starting schema migration from v$oldVersion to v$newVersion');
     if (oldVersion < 32) {
       debugPrint('🚀 Migrating to Database v32: Resetting products tax_status to exempt for opt-in VAT');
       try {
@@ -1864,6 +1870,7 @@ class DatabaseService {
         )
       ''');
     }
+    StartupLogger.log('DatabaseService: Schema migration to v$newVersion completed successfully');
   }
 
   // ==================== BRANCH OPERATIONS ====================
@@ -4492,6 +4499,323 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
     return data;
   }
 
+  /// Get category-wise inventory breakdown (stock, valuation, margin)
+  Future<List<Map<String, dynamic>>> getInventoryCategoryBreakdown(int branchId) async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT 
+        COALESCE(NULLIF(p.category, ''), 'General') as category,
+        COUNT(p.id) as product_count,
+        SUM(CASE WHEN p.track_batches = 1 
+                 THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                 ELSE p.stock 
+            END) as total_units,
+        SUM((CASE WHEN p.track_batches = 1 
+                  THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                  ELSE p.stock 
+             END) * p.price) as retail_value,
+        SUM(CASE WHEN p.track_batches = 1 
+                 THEN COALESCE((SELECT SUM(b.stock * COALESCE(b.purchase_price, p.cost_price, 0.0)) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0)
+                 ELSE p.stock * COALESCE(p.cost_price, 0.0)
+            END) as cost_value
+      FROM products p
+      WHERE (p.branch_id = ? OR ? = 0) AND p.deleted = 0
+      GROUP BY category
+      ORDER BY retail_value DESC
+    ''', [branchId, branchId]);
+
+    return result.map((row) {
+      final map = Map<String, dynamic>.from(row);
+      final retail = (map['retail_value'] as num?)?.toDouble() ?? 0.0;
+      final cost = (map['cost_value'] as num?)?.toDouble() ?? 0.0;
+      final totalUnits = (map['total_units'] as num?)?.toDouble() ?? 0.0;
+      final productCount = (map['product_count'] as num?)?.toInt() ?? 0;
+      final margin = retail - cost;
+      final marginPct = retail > 0 ? (margin / retail) * 100 : 0.0;
+
+      map['category'] = map['category'] as String;
+      map['retail_value'] = retail;
+      map['cost_value'] = cost;
+      map['total_units'] = totalUnits;
+      map['product_count'] = productCount;
+      map['margin'] = margin;
+      map['margin_percentage'] = marginPct;
+      return map;
+    }).toList();
+  }
+
+  /// Get comprehensive category intelligence combining inventory valuation, stock health, and sales performance.
+  Future<List<Map<String, dynamic>>> getComprehensiveCategoryAnalytics(
+    int branchId, {
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final db = await database;
+    final now = DateTime.now();
+    final start = (startDate ?? DateTime(now.year, now.month, 1)).toIso8601String();
+    final end = (endDate ?? DateTime(now.year, now.month, now.day, 23, 59, 59, 999)).toIso8601String();
+
+    // 1. Inventory & Health metrics per category
+    final invRows = await db.rawQuery('''
+      SELECT 
+        COALESCE(NULLIF(p.category, ''), 'General') as category,
+        COUNT(p.id) as product_count,
+        SUM(CASE WHEN p.track_batches = 1 
+                 THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                 ELSE p.stock 
+            END) as total_units,
+        SUM((CASE WHEN p.track_batches = 1 
+                  THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                  ELSE p.stock 
+             END) * p.price) as retail_value,
+        SUM(CASE WHEN p.track_batches = 1 
+                 THEN COALESCE((SELECT SUM(b.stock * COALESCE(b.purchase_price, p.cost_price, 0.0)) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0)
+                 ELSE p.stock * COALESCE(p.cost_price, 0.0)
+            END) as cost_value,
+        SUM(CASE WHEN (CASE WHEN p.track_batches = 1 
+                            THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                            ELSE p.stock 
+                       END) <= 0 THEN 1 ELSE 0 END) as out_of_stock_count,
+        SUM(CASE WHEN (CASE WHEN p.track_batches = 1 
+                            THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                            ELSE p.stock 
+                       END) > 0 AND (CASE WHEN p.track_batches = 1 
+                                          THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                                          ELSE p.stock 
+                                     END) <= p.min_stock THEN 1 ELSE 0 END) as low_stock_count,
+        SUM(CASE WHEN (CASE WHEN p.track_batches = 1 
+                            THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                            ELSE p.stock 
+                       END) > p.min_stock THEN 1 ELSE 0 END) as healthy_stock_count
+      FROM products p
+      WHERE (p.branch_id = ? OR ? = 0) AND p.deleted = 0
+      GROUP BY category
+      ORDER BY retail_value DESC
+    ''', [branchId, branchId]);
+
+    // 2. Sales metrics per category in date range
+    final salesRows = await db.rawQuery('''
+      SELECT 
+        COALESCE(NULLIF(p.category, ''), 'General') as category,
+        COALESCE(SUM(si.total), 0.0) as sales_revenue,
+        COALESCE(SUM(si.quantity), 0.0) as units_sold,
+        COALESCE(SUM(si.total - (si.quantity * COALESCE(si.cost_price, p.cost_price, 0.0))), 0.0) as sales_profit
+      FROM sale_items si
+      JOIN products p ON si.product_id = p.id
+      JOIN sales s ON si.sale_id = s.id
+      WHERE (s.branch_id = ? OR ? = 0) AND s.deleted = 0 AND s.created_at BETWEEN ? AND ?
+      GROUP BY category
+    ''', [branchId, branchId, start, end]);
+
+    final salesMap = <String, Map<String, dynamic>>{};
+    for (final r in salesRows) {
+      final cat = r['category'] as String;
+      salesMap[cat] = {
+        'sales_revenue': (r['sales_revenue'] as num?)?.toDouble() ?? 0.0,
+        'units_sold': (r['units_sold'] as num?)?.toDouble() ?? 0.0,
+        'sales_profit': (r['sales_profit'] as num?)?.toDouble() ?? 0.0,
+      };
+    }
+
+    // 3. Merge results
+    return invRows.map((row) {
+      final map = Map<String, dynamic>.from(row);
+      final cat = map['category'] as String;
+      final retail = (map['retail_value'] as num?)?.toDouble() ?? 0.0;
+      final cost = (map['cost_value'] as num?)?.toDouble() ?? 0.0;
+      final totalUnits = (map['total_units'] as num?)?.toDouble() ?? 0.0;
+      final productCount = (map['product_count'] as num?)?.toInt() ?? 0;
+      final healthy = (map['healthy_stock_count'] as num?)?.toInt() ?? 0;
+      final low = (map['low_stock_count'] as num?)?.toInt() ?? 0;
+      final out = (map['out_of_stock_count'] as num?)?.toInt() ?? 0;
+      final margin = retail - cost;
+      final marginPct = retail > 0 ? (margin / retail) * 100 : 0.0;
+
+      final salesInfo = salesMap[cat];
+      final salesRevenue = salesInfo != null ? (salesInfo['sales_revenue'] as double) : 0.0;
+      final unitsSold = salesInfo != null ? (salesInfo['units_sold'] as double) : 0.0;
+      final salesProfit = salesInfo != null ? (salesInfo['sales_profit'] as double) : 0.0;
+      final realizedMarginPct = salesRevenue > 0 ? (salesProfit / salesRevenue) * 100 : 0.0;
+
+      map['category'] = cat;
+      map['retail_value'] = retail;
+      map['cost_value'] = cost;
+      map['total_units'] = totalUnits;
+      map['product_count'] = productCount;
+      map['margin'] = margin;
+      map['margin_percentage'] = marginPct;
+      map['healthy_stock_count'] = healthy;
+      map['low_stock_count'] = low;
+      map['out_of_stock_count'] = out;
+      map['sales_revenue'] = salesRevenue;
+      map['units_sold'] = unitsSold;
+      map['sales_profit'] = salesProfit;
+      map['realized_margin_percentage'] = realizedMarginPct;
+      return map;
+    }).toList();
+  }
+
+  /// Get products inside a specific category with stock health, valuation, and sales velocity
+  Future<List<Map<String, dynamic>>> getCategoryProductsDetailed(
+    int branchId,
+    String category, {
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final db = await database;
+    final now = DateTime.now();
+    final start = (startDate ?? DateTime(now.year, now.month, 1)).toIso8601String();
+    final end = (endDate ?? DateTime(now.year, now.month, now.day, 23, 59, 59, 999)).toIso8601String();
+
+    final result = await db.rawQuery('''
+      SELECT 
+        p.id,
+        p.name,
+        p.name_sinhala,
+        p.name_english,
+        p.base_barcode,
+        p.unit,
+        p.price,
+        COALESCE(p.cost_price, 0.0) as cost_price,
+        p.min_stock,
+        (CASE WHEN p.track_batches = 1 
+              THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+              ELSE p.stock 
+         END) as current_stock,
+        (SELECT COALESCE(SUM(si.quantity), 0.0) 
+         FROM sale_items si 
+         JOIN sales s ON si.sale_id = s.id 
+         WHERE si.product_id = p.id AND (s.branch_id = ? OR ? = 0) AND s.deleted = 0 AND s.created_at BETWEEN ? AND ?) as period_sales_qty,
+        (SELECT COALESCE(SUM(si.total), 0.0) 
+         FROM sale_items si 
+         JOIN sales s ON si.sale_id = s.id 
+         WHERE si.product_id = p.id AND (s.branch_id = ? OR ? = 0) AND s.deleted = 0 AND s.created_at BETWEEN ? AND ?) as period_sales_revenue
+      FROM products p
+      WHERE (p.branch_id = ? OR ? = 0) 
+        AND p.deleted = 0 
+        AND (p.category = ? OR (? = 'General' AND (p.category IS NULL OR p.category = '')))
+      ORDER BY (CASE WHEN p.track_batches = 1 
+                     THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+                     ELSE p.stock 
+                END * p.price) DESC
+    ''', [branchId, branchId, start, end, branchId, branchId, start, end, branchId, branchId, category, category]);
+
+    return result.map((row) {
+      final map = Map<String, dynamic>.from(row);
+      final stock = (map['current_stock'] as num?)?.toDouble() ?? 0.0;
+      final price = (map['price'] as num?)?.toDouble() ?? 0.0;
+      final cost = (map['cost_price'] as num?)?.toDouble() ?? 0.0;
+      final minStock = (map['min_stock'] as num?)?.toDouble() ?? 10.0;
+      final salesQty = (map['period_sales_qty'] as num?)?.toDouble() ?? 0.0;
+      final salesRevenue = (map['period_sales_revenue'] as num?)?.toDouble() ?? 0.0;
+
+      final retailVal = stock * price;
+      final costVal = stock * cost;
+      final profitMargin = retailVal - costVal;
+      final marginPct = price > 0 ? ((price - cost) / price) * 100 : 0.0;
+
+      String status = 'healthy';
+      if (stock <= 0) {
+        status = 'out';
+      } else if (stock <= minStock) {
+        status = 'low';
+      }
+
+      map['retail_valuation'] = retailVal;
+      map['cost_valuation'] = costVal;
+      map['profit_margin'] = profitMargin;
+      map['margin_percentage'] = marginPct;
+      map['period_sales_qty'] = salesQty;
+      map['period_sales_revenue'] = salesRevenue;
+      map['status'] = status;
+      return map;
+    }).toList();
+  }
+
+  /// Get dead / slow-moving stock analysis (products with stock but no sales in [daysThreshold] days)
+  Future<List<Map<String, dynamic>>> getDeadStockAnalysis(int branchId, {int daysThreshold = 30}) async {
+    final db = await database;
+    final cutoffDate = DateTime.now().subtract(Duration(days: daysThreshold)).toIso8601String();
+
+    final result = await db.rawQuery('''
+      SELECT 
+        p.id,
+        p.name,
+        p.name_sinhala,
+        COALESCE(NULLIF(p.category, ''), 'General') as category,
+        p.unit,
+        p.price,
+        COALESCE(p.cost_price, 0.0) as cost_price,
+        (CASE WHEN p.track_batches = 1 
+              THEN COALESCE((SELECT SUM(b.stock) FROM product_batches b WHERE b.product_id = p.id AND b.deleted = 0), 0.0) 
+              ELSE p.stock 
+         END) as current_stock,
+        MAX(s.created_at) as last_sold_at,
+        p.created_at as product_created_at
+      FROM products p
+      LEFT JOIN sale_items si ON si.product_id = p.id
+      LEFT JOIN sales s ON si.sale_id = s.id AND s.deleted = 0
+      WHERE (p.branch_id = ? OR ? = 0) AND p.deleted = 0
+      GROUP BY p.id
+      HAVING current_stock > 0 AND (last_sold_at IS NULL OR last_sold_at < ?)
+      ORDER BY (current_stock * CASE WHEN p.cost_price IS NOT NULL AND p.cost_price > 0 THEN p.cost_price ELSE p.price END) DESC
+      LIMIT 100
+    ''', [branchId, branchId, cutoffDate]);
+
+    return result.map((row) {
+      final map = Map<String, dynamic>.from(row);
+      final stock = (map['current_stock'] as num?)?.toDouble() ?? 0.0;
+      final cost = (map['cost_price'] as num?)?.toDouble() ?? 0.0;
+      final price = (map['price'] as num?)?.toDouble() ?? 0.0;
+      final effectiveCost = cost > 0 ? cost : price;
+      map['current_stock'] = stock;
+      map['cost_price'] = cost;
+      map['price'] = price;
+      map['locked_capital'] = stock * effectiveCost;
+      return map;
+    }).toList();
+  }
+
+  /// Get expiring / near-expiry stock risk within [daysAhead] days
+  Future<List<Map<String, dynamic>>> getExpiringStockRisk(int branchId, {int daysAhead = 30}) async {
+    final db = await database;
+    final cutoffDate = DateTime.now().add(Duration(days: daysAhead)).toIso8601String();
+
+    final result = await db.rawQuery('''
+      SELECT 
+        b.id as batch_id,
+        b.product_id,
+        p.name as product_name,
+        p.name_sinhala,
+        COALESCE(NULLIF(p.category, ''), 'General') as category,
+        p.unit,
+        b.batch_number,
+        b.stock,
+        b.expiry_date,
+        COALESCE(b.purchase_price, p.cost_price, 0.0) as cost_price,
+        p.price as selling_price
+      FROM product_batches b
+      JOIN products p ON b.product_id = p.id
+      WHERE (p.branch_id = ? OR ? = 0) AND b.deleted = 0 AND b.stock > 0 
+        AND b.expiry_date IS NOT NULL AND b.expiry_date <= ?
+      ORDER BY b.expiry_date ASC
+      LIMIT 50
+    ''', [branchId, branchId, cutoffDate]);
+
+    return result.map((row) {
+      final map = Map<String, dynamic>.from(row);
+      final stock = (map['stock'] as num?)?.toDouble() ?? 0.0;
+      final cost = (map['cost_price'] as num?)?.toDouble() ?? 0.0;
+      final price = (map['selling_price'] as num?)?.toDouble() ?? 0.0;
+      final effectiveCost = cost > 0 ? cost : price;
+      map['stock'] = stock;
+      map['cost_price'] = cost;
+      map['selling_price'] = price;
+      map['at_risk_value'] = stock * effectiveCost;
+      return map;
+    }).toList();
+  }
+
   /// Get top selling products
   Future<List<Map<String, dynamic>>> getTopSellingProducts(int limit, DateTime start, DateTime end, int branchId) async {
     final db = await database;
@@ -5644,6 +5968,51 @@ Future<List<Map<String, dynamic>>> getProfitabilityTrends(DateTime start, DateTi
         'created_at': DateTime.now().toIso8601String(),
       });
       await _addToSyncQueue('stock_history', historyId, 'INSERT', executor: txn);
+    });
+  }
+
+  /// Batch reconcile physical stock counts with system stock.
+  /// Each item in adjustments contains:
+  /// - 'productId': int
+  /// - 'physicalStock': double
+  /// - 'systemStock': double
+  /// - 'variance': double (physical - system)
+  /// - 'notes': String?
+  Future<void> reconcileStockAudit({
+    required int branchId,
+    required List<Map<String, dynamic>> adjustments,
+    int? employeeId,
+  }) async {
+    if (adjustments.isEmpty) return;
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+
+    await db.transaction((txn) async {
+      for (final adj in adjustments) {
+        final productId = adj['productId'] as int;
+        final physicalStock = (adj['physicalStock'] as num).toDouble();
+        final variance = (adj['variance'] as num).toDouble();
+        final notes = adj['notes'] as String? ?? 'Physical Stock Audit Reconciliation';
+
+        // 1. Set the product stock directly to physical stock
+        await txn.rawUpdate(
+          'UPDATE products SET stock = ?, updated_at = ?, synced = 0 WHERE id = ?',
+          [physicalStock, now, productId],
+        );
+        await _addToSyncQueue('products', productId, 'UPDATE', executor: txn);
+
+        // 2. Log to stock_history with type 'audit'
+        final historyId = await _insertWithId(txn, 'stock_history', {
+          'branch_id': branchId,
+          'product_id': productId,
+          'quantity_change': variance,
+          'type': 'audit',
+          'notes': notes,
+          'employee_id': employeeId,
+          'created_at': now,
+        });
+        await _addToSyncQueue('stock_history', historyId, 'INSERT', executor: txn);
+      }
     });
   }
 

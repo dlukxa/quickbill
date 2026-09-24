@@ -89,8 +89,8 @@ jobs:
       - name: Upload Windows Setup Installer
         uses: actions/upload-artifact@v4
         with:
-          name: QuickBill_Setup_x64
-          path: build\windows_installer\QuickBill_Setup.exe
+          name: QuickBill-Setup-1.0.6.11
+          path: build\windows_installer\QuickBill-Setup-1.0.6.11.exe
 
       - name: Upload Windows Portable Zip
         uses: actions/upload-artifact@v4
@@ -102,23 +102,23 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.9' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'QuickBill POS v1.0.9 (Windows Release)' }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v1.0.6.11' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'QuickBill POS v1.0.6.11 (Windows Release)' }}
           body: |
-            ## QuickBill POS Windows Desktop Release
+            ## QuickBill POS Windows Desktop Release 1.0.6.11
             
-            ### ✨ What's New:
-            - **Per-Product Opt-In VAT System**: Value Added Tax is opt-in per product (defaults to exempt/no tax). Supports both VAT-registered and non-registered retail businesses.
-            - **Thermal Receipt Printing Engine**: Professional 58mm/80mm receipt printing with Sinhala Unicode rendering, bold savings banner, and custom shop logo header.
-            - **Excel-Style Inventory Grid**: Fast batch editing with inline tax status, stock levels, and price adjustments.
-            - **Batch & Expiry Management**: Track expiring stock batches, batch write-offs, and automated expiry alerts.
-            - **Desktop POS Reliability**: Self-contained C++ runtime bundling, Sandy Bridge (i5-2400) legacy CPU compatibility, and diagnostic mode.
+            ### ✨ What's New & Reliability Fixes:
+            - **Startup Reliability & Diagnostics**: Resolved startup stalling on Intel Core i5-2400 (Sandy Bridge) and older Intel HD Graphics hardware. Persistent diagnostic logging to `%LOCALAPPDATA%\QuickBill\logs\startup.log`.
+            - **Universal CPU Compatibility**: Compiled with standard baseline x86-64 instructions (SSE2) to eliminate `0xC000001D` (`STATUS_ILLEGAL_INSTRUCTION`) exceptions.
+            - **Zero Data Loss Guarantee**: Local SQLite database in `%APPDATA%` is 100% preserved during upgrades from v1.0.6.10 to v1.0.6.11.
+            - **Automatic Cloud Updates**: Streamlined background update checks via Cloud Firestore and Firebase Storage.
+            - **Thermal Receipt & Multi-Mode POS**: Sinhala transliteration, Excel inventory grid, batch expiry tracking, and opt-in VAT support.
 
             ### 📦 Direct Downloads:
-            - **Installer (Recommended)**: `QuickBill_Setup.exe` (Full setup wizard, start menu & desktop shortcuts, auto-configures VC++ runtime)
+            - **Installer (Recommended)**: `QuickBill-Setup-1.0.6.11.exe` (Full setup wizard, start menu & desktop shortcuts, auto-configures VC++ runtime)
             - **Portable Archive**: `quickbill_windows_x64.zip` (Pre-extracted portable package)
           files: |
-            build/windows_installer/QuickBill_Setup.exe
+            build/windows_installer/QuickBill-Setup-1.0.6.11.exe
             quickbill_windows_x64.zip
           draft: false
           prerelease: false

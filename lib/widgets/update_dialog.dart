@@ -60,66 +60,91 @@ class _UpdateDialogState extends State<UpdateDialog> {
   Widget build(BuildContext context) {
     final info = widget.updateInfo;
 
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: Dialog(
-        backgroundColor: const Color(0xFF0F172A), // Dark slate theme
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFF334155)),
-        ),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header with Update Icon
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.3)),
+    return PopScope(
+      canPop: !widget.updateInfo.mandatory,
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Dialog(
+          backgroundColor: const Color(0xFF0F172A), // Dark slate theme
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: Color(0xFF334155)),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header with Update Icon
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: (info.mandatory ? Colors.amber : AppTheme.primaryGreen).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: (info.mandatory ? Colors.amber : AppTheme.primaryGreen).withValues(alpha: 0.3)),
+                        ),
+                        child: Icon(
+                          info.mandatory ? Icons.warning_amber_rounded : Icons.system_update_rounded,
+                          color: info.mandatory ? Colors.amber : AppTheme.primaryGreen,
+                          size: 28,
+                        ),
                       ),
-                      child: const Icon(
-                        Icons.system_update_rounded,
-                        color: AppTheme.primaryGreen,
-                        size: 28,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'A new QuickBill update is available',
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              letterSpacing: -0.3,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    info.mandatory ? 'Critical Update Required' : 'A new QuickBill update is available',
+                                    style: GoogleFonts.plusJakartaSans(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      letterSpacing: -0.3,
+                                    ),
+                                  ),
+                                ),
+                                if (info.mandatory)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+                                    ),
+                                    child: Text(
+                                      'Mandatory',
+                                      style: GoogleFonts.inter(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: const Color(0xFFFCA5A5),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Version ${info.latestVersion} is ready to install',
-                            style: GoogleFonts.inter(
-                              fontSize: 13,
-                              color: const Color(0xFF94A3B8),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Version ${info.latestVersion} is ready to install',
+                              style: GoogleFonts.inter(
+                                fontSize: 13,
+                                color: const Color(0xFF94A3B8),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
 
                 // Version Badge Comparison
                 Container(
@@ -279,7 +304,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (!_isDownloading)
+                    if (!_isDownloading && !widget.updateInfo.mandatory)
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
                         style: TextButton.styleFrom(
@@ -323,6 +348,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
